@@ -31,7 +31,14 @@ namespace VramMonitor.Forms
 
         private ToolStripMenuItem _menuHelp = null!;
         private ToolStripMenuItem _menuNvmlDiag = null!;
+        private ToolStripMenuItem _menuGithub = null!;
         private ToolStripMenuItem _menuAbout = null!;
+
+        private ContextMenuStrip  _contextMenu = null!;
+        private ToolStripMenuItem _menuContextEndTask = null!;
+        private ToolStripMenuItem _menuContextOpenFileLocation = null!;
+        private ToolStripSeparator _menuContextSeparator = null!;
+        private ToolStripMenuItem _menuContextProperties = null!;
 
         private Panel             _headerPanel = null!;
         private Panel             _listPanel = null!;
@@ -118,12 +125,36 @@ namespace VramMonitor.Forms
             _menuHelp = new ToolStripMenuItem();
             _menuNvmlDiag = new ToolStripMenuItem();
             _menuNvmlDiag.Click += OnBannerClick;
+            _menuGithub = new ToolStripMenuItem();
+            _menuGithub.Click += OnMenuGithubClick;
             _menuAbout = new ToolStripMenuItem();
             _menuAbout.Click += OnMenuAboutClick;
-            _menuHelp.DropDownItems.AddRange(new ToolStripItem[] { _menuNvmlDiag, _menuAbout });
+            _menuHelp.DropDownItems.AddRange(new ToolStripItem[] { _menuNvmlDiag, _menuGithub, new ToolStripSeparator(), _menuAbout });
 
             _menuStrip.Items.AddRange(new ToolStripItem[] { _menuFile, _menuView, _menuSettings, _menuHelp });
             MainMenuStrip = _menuStrip;
+
+            // ---- Context Menu for Process List ----
+            _contextMenu = new ContextMenuStrip
+            {
+                Font = new Font("Segoe UI", 9F)
+            };
+            _menuContextEndTask = new ToolStripMenuItem();
+            _menuContextEndTask.Click += OnContextEndTaskClick;
+            _menuContextOpenFileLocation = new ToolStripMenuItem();
+            _menuContextOpenFileLocation.Click += OnContextOpenFileLocationClick;
+            _menuContextSeparator = new ToolStripSeparator();
+            _menuContextProperties = new ToolStripMenuItem();
+            _menuContextProperties.Click += OnContextPropertiesClick;
+
+            _contextMenu.Items.AddRange(new ToolStripItem[]
+            {
+                _menuContextEndTask,
+                _menuContextOpenFileLocation,
+                _menuContextSeparator,
+                _menuContextProperties
+            });
+            _contextMenu.Opening += OnContextMenuOpening;
 
             // ---- Banner panel (Warning / Status) ----
             _bannerPanel = new Panel
@@ -225,13 +256,14 @@ namespace VramMonitor.Forms
 
             _listView = new DoubleBufferedListView
             {
-                Dock           = DockStyle.Fill,
-                View           = View.Details,
-                FullRowSelect  = true,
-                GridLines      = true,
-                BorderStyle    = BorderStyle.None,
-                OwnerDraw      = true,
-                SmallImageList = _imageList,
+                Dock             = DockStyle.Fill,
+                View             = View.Details,
+                FullRowSelect    = true,
+                GridLines        = true,
+                BorderStyle      = BorderStyle.None,
+                OwnerDraw        = true,
+                SmallImageList   = _imageList,
+                ContextMenuStrip = _contextMenu,
             };
             _colPid       = new ColumnHeader { Text = "PID", Width = 70 };
             _colName      = new ColumnHeader { Text = "Process Name", Width = 330 };
@@ -243,6 +275,7 @@ namespace VramMonitor.Forms
             _listView.DrawColumnHeader += OnListViewDrawColumnHeader;
             _listView.DrawItem         += OnListViewDrawItem;
             _listView.DrawSubItem      += OnListViewDrawSubItem;
+            _listView.MouseDown        += OnListViewMouseDown;
             _listView.Resize           += OnListViewResize;
 
             _listPanel = new Panel

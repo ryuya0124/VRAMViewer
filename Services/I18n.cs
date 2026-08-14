@@ -213,7 +213,7 @@ namespace VramMonitor.Services
 
         private static readonly Dictionary<string, string> BuiltInFallback = new(StringComparer.OrdinalIgnoreCase)
         {
-            ["AppTitle"] = "VRAM Monitor",
+            ["AppTitle"] = "VRAMViewer",
             ["Initializing"] = "Initializing...",
             ["GpuNotFound"] = "No GPU found",
             ["NoGpuMemoryInfo"] = "Unable to retrieve GPU memory information",
@@ -240,7 +240,11 @@ namespace VramMonitor.Services
             ["MenuOpenLanguagesFolder"] = "📁 Open Languages Folder...",
             ["MenuHelp"] = "&Help",
             ["MenuNvmlDiag"] = "NVML &Diagnostics...",
-            ["MenuAbout"] = "&About VRAM Monitor...",
+            ["MenuGithub"] = "&GitHub Repository...",
+            ["MenuAbout"] = "&About VRAMViewer...",
+            ["MenuEndTask"] = "&End Task",
+            ["MenuOpenFileLocation"] = "&Open File Location",
+            ["MenuProperties"] = "P&roperties",
             ["ColPid"] = "PID",
             ["ColProcessName"] = "Process Name",
             ["ColDedicatedVram"] = "Dedicated VRAM",
@@ -255,13 +259,18 @@ namespace VramMonitor.Services
             ["NvmlDiagDialogTitle"] = "NVML (NVIDIA Management Library) Diagnostics",
             ["AlphaDiagDialogTitle"] = "GPU Experimental Support (Alpha)",
             ["AlphaDiagDialogMessage"] = "Detected GPU: {0}\n\nThis environment is operating under Alpha (Experimental) support.\nGPU memory usage is monitored and displayed using Windows DXGI and Performance Counters.",
-            ["AboutDialogTitle"] = "About VRAM Monitor",
-            ["AboutDialogMessage"] = "VRAM Monitor v1.0.0\n\nA real-time GPU VRAM monitoring utility using DirectX (DXGI) and NVIDIA Management Library (NVML).\n\n• Real-time VRAM usage tracking\n• Per-process VRAM breakdown\n• Dark & Light theme support\n• JSON-based multi-language localization"
+            ["EndTaskConfirmTitle"] = "End Task",
+            ["EndTaskConfirmMessage"] = "Are you sure you want to end {0} (PID: {1})?\n\nUnsaved data may be lost.",
+            ["EndTaskFailedTitle"] = "Error Ending Task",
+            ["EndTaskFailedMessage"] = "Could not end {0} (PID: {1}).\n\nReason: {2}",
+            ["FileNotFoundMessage"] = "Could not find executable file location.",
+            ["AboutDialogTitle"] = "About VRAMViewer",
+            ["AboutDialogMessageContent"] = "A real-time GPU VRAM monitoring utility using DirectX (DXGI) and NVIDIA Management Library (NVML).\n\n• Per-process VRAM breakdown\n• Dark & Light theme support\n• JSON-based multi-language localization"
         };
 
         private static readonly Dictionary<string, string> BuiltInJaStrings = new(StringComparer.OrdinalIgnoreCase)
         {
-            ["AppTitle"] = "VRAM Monitor",
+            ["AppTitle"] = "VRAMViewer",
             ["Initializing"] = "初期化中...",
             ["GpuNotFound"] = "GPU が見つかりません",
             ["NoGpuMemoryInfo"] = "GPU メモリ情報を取得できません",
@@ -288,7 +297,11 @@ namespace VramMonitor.Services
             ["MenuOpenLanguagesFolder"] = "📁 言語フォルダを開く...",
             ["MenuHelp"] = "ヘルプ(&H)",
             ["MenuNvmlDiag"] = "NVML 診断情報(&D)...",
+            ["MenuGithub"] = "GitHub リポジトリ(&G)...",
             ["MenuAbout"] = "バージョン情報(&A)...",
+            ["MenuEndTask"] = "タスクの終了(&E)",
+            ["MenuOpenFileLocation"] = "ファイルの場所を開く(&O)",
+            ["MenuProperties"] = "プロパティ(&R)",
             ["ColPid"] = "PID",
             ["ColProcessName"] = "プロセス名",
             ["ColDedicatedVram"] = "専用 VRAM",
@@ -303,8 +316,13 @@ namespace VramMonitor.Services
             ["NvmlDiagDialogTitle"] = "NVML (NVIDIA Management Library) 診断情報",
             ["AlphaDiagDialogTitle"] = "GPU 実験的サポート (Alpha)",
             ["AlphaDiagDialogMessage"] = "検出された GPU: {0}\n\n本環境は Alpha 版（実験的対応）として動作しています。\nWindows DXGI およびパフォーマンスカウンターを使用して GPU メモリ使用状況を取得・表示しています。",
-            ["AboutDialogTitle"] = "VRAM Monitor について",
-            ["AboutDialogMessage"] = "VRAM Monitor v1.0.0\n\nDirectX (DXGI) および NVIDIA Management Library (NVML) を使用した GPU VRAM 監視ツールです。\n\n・リアルタイム VRAM 使用量監視\n・プロセス別 VRAM 内訳表示\n・ダーク / ライトテーマ対応\n・JSONファイルによる多言語対応"
+            ["EndTaskConfirmTitle"] = "タスクの終了",
+            ["EndTaskConfirmMessage"] = "{0} (PID: {1}) を終了しますか？\n\n保存されていないデータは失われる可能性があります。",
+            ["EndTaskFailedTitle"] = "タスクの終了エラー",
+            ["EndTaskFailedMessage"] = "{0} (PID: {1}) を終了できませんでした。\n\n理由: {2}",
+            ["FileNotFoundMessage"] = "実行ファイルの場所が見つかりませんでした。",
+            ["AboutDialogTitle"] = "VRAMViewer について",
+            ["AboutDialogMessageContent"] = "DirectX (DXGI) および NVIDIA Management Library (NVML) を使用したリアルタイム GPU VRAM 監視ツールです。\n\n・プロセス別 VRAM 内訳表示\n・ダーク / ライトテーマ対応\n・JSONファイルによる多言語対応"
         };
     }
 }

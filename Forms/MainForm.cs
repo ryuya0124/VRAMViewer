@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using VramMonitor.Models;
@@ -141,7 +143,13 @@ namespace VramMonitor.Forms
             // メニュー - Help
             _menuHelp.Text     = I18n.T("MenuHelp");
             _menuNvmlDiag.Text = I18n.T("MenuNvmlDiag");
+            _menuGithub.Text   = I18n.T("MenuGithub");
             _menuAbout.Text    = I18n.T("MenuAbout");
+
+            // コンテキストメニュー
+            _menuContextEndTask.Text          = I18n.T("MenuEndTask");
+            _menuContextOpenFileLocation.Text = I18n.T("MenuOpenFileLocation");
+            _menuContextProperties.Text       = I18n.T("MenuProperties");
 
             // ListView カラムヘッダー
             _colPid.Text       = I18n.T("ColPid");
@@ -191,13 +199,23 @@ namespace VramMonitor.Forms
             UpdateMenuCheckStates();
         }
 
+        private void OnMenuGithubClick(object? sender, EventArgs e)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName        = AboutForm.GitHubUrl,
+                    UseShellExecute = true
+                });
+            }
+            catch { }
+        }
+
         private void OnMenuAboutClick(object? sender, EventArgs e)
         {
-            MessageBox.Show(
-                I18n.T("AboutDialogMessage"),
-                I18n.T("AboutDialogTitle"),
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+            using var about = new AboutForm(_isDarkMode);
+            about.ShowDialog(this);
         }
 
         // ----------------------------------------------------------------
@@ -216,8 +234,9 @@ namespace VramMonitor.Forms
                 _ => I18n.T("ThemeAuto")
             };
 
-            // MenuStrip のカスタムレンダラー
-            _menuStrip.Renderer = new ModernMenuRenderer(_isDarkMode);
+            // MenuStrip & ContextMenuStrip のカスタムレンダラー
+            _menuStrip.Renderer   = new ModernMenuRenderer(_isDarkMode);
+            _contextMenu.Renderer = new ModernMenuRenderer(_isDarkMode);
 
             if (IsHandleCreated)
             {
@@ -326,6 +345,126 @@ namespace VramMonitor.Forms
             if ((e.State & DrawItemState.Focus) == DrawItemState.Focus && !isSelected)
             {
                 e.DrawFocusRectangle();
+            }
+        }
+
+        // ----------------------------------------------------------------
+        // Process Context Menu Handlers
+        // ----------------------------------------------------------------
+
+        private void OnListViewMouseDown(object? sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Right)
+            {
+                var item = _listView.GetItemAt(e.X, e.Y);
+                if (item != null)
+                {
+                    item.Selected = true;
+                }
+            }
+        }
+
+        private void OnContextMenuOpening(object? sender, System.ComponentModel.CancelEventArgs e)
+        {
+            if (_listView.SelectedItems.Count == 0)
+            {
+                e.Cancel = true;
+                return;
+            }
+
+            var item = _listView.SelectedItems[0];
+            bool isSystem = item.Tag is string tag && tag == "SYSTEM";
+
+            _menuContextEndTask.Enabled          = !isSystem;
+            _menuContextOpenFileLocation.Enabled = !isSystem;
+            _menuContextProperties.Enabled       = !isSystem;
+        }
+
+        private void OnContextEndTaskClick(object? sender, EventArgs e)
+        {
+            if (_listView.SelectedItems.Count == 0) return;
+
+            var item = _listView.SelectedItems[0];
+            if (item.Tag is string pidStr && uint.TryParse(pidStr, out uint pid) && pid > 4)
+            {
+                string procName = item.SubItems.Count > 1 ? item.SubItems[1].Text : $"PID {pid}";
+
+                var confirm = MessageBox.Show(
+                    I18n.T("EndTaskConfirmMessage", procName, pid),
+                    I18n.T("EndTaskConfirmTitle"),
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (confirm == DialogResult.Yes)
+                {
+                    try
+                    {
+                        using var p = System.Diagnostics.Process.GetProcessById((int)pid);
+                        p.Kill();
+                        RefreshData();
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(
+                            I18n.T("EndTaskFailedMessage", procName, pid, ex.Message),
+                            I18n.T("EndTaskFailedTitle"),
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error);
+                    }
+                }
+            }
+        }
+
+        private void OnContextOpenFileLocationClick(object? sender, EventArgs e)
+        {
+            if (_listView.SelectedItems.Count == 0) return;
+
+            var item = _listView.SelectedItems[0];
+            if (item.Tag is string pidStr && uint.TryParse(pidStr, out uint pid) && pid > 4)
+            {
+                string? exePath = _collector.IconService.GetProcessExecutablePath(pid);
+                if (!string.IsNullOrEmpty(exePath) && System.IO.File.Exists(exePath))
+                {
+                    try
+                    {
+                        System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{exePath}\"");
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+                else
+                {
+                    MessageBox.Show(
+                        I18n.T("FileNotFoundMessage"),
+                        I18n.T("MenuOpenFileLocation"),
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+            }
+        }
+
+        private void OnContextPropertiesClick(object? sender, EventArgs e)
+        {
+            if (_listView.SelectedItems.Count == 0) return;
+
+            var item = _listView.SelectedItems[0];
+            if (item.Tag is string pidStr && uint.TryParse(pidStr, out uint pid) && pid > 4)
+            {
+                string? exePath = _collector.IconService.GetProcessExecutablePath(pid);
+                if (!string.IsNullOrEmpty(exePath) && System.IO.File.Exists(exePath))
+                {
+                    ShellHelper.ShowFileProperties(exePath);
+                }
+                else
+                {
+                    MessageBox.Show(
+                        I18n.T("FileNotFoundMessage"),
+                        I18n.T("MenuProperties"),
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
             }
         }
 

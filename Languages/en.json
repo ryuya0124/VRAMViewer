@@ -2,7 +2,7 @@
   "CultureCode": "en",
   "DisplayName": "🇺🇸 English",
   "Strings": {
-    "AppTitle": "VRAM Monitor",
+    "AppTitle": "VRAMViewer",
     "Initializing": "Initializing...",
     "GpuNotFound": "No GPU found",
     "NoGpuMemoryInfo": "Unable to retrieve GPU memory information",
@@ -34,7 +34,12 @@
 
     "MenuHelp": "&Help",
     "MenuNvmlDiag": "NVML &Diagnostics...",
-    "MenuAbout": "&About VRAM Monitor...",
+    "MenuGithub": "&GitHub Repository...",
+    "MenuAbout": "&About VRAMViewer...",
+
+    "MenuEndTask": "&End Task",
+    "MenuOpenFileLocation": "&Open File Location",
+    "MenuProperties": "P&roperties",
 
     "ColPid": "PID",
     "ColProcessName": "Process Name",
@@ -54,7 +59,13 @@
     "AlphaDiagDialogTitle": "GPU Experimental Support (Alpha)",
     "AlphaDiagDialogMessage": "Detected GPU: {0}\n\nThis environment is operating under Alpha (Experimental) support.\nGPU memory usage is monitored and displayed using Windows DXGI and Performance Counters.",
 
-    "AboutDialogTitle": "About VRAM Monitor",
-    "AboutDialogMessage": "VRAM Monitor v1.0.0\n\nA real-time GPU VRAM monitoring utility using DirectX (DXGI) and NVIDIA Management Library (NVML).\n\n• Real-time VRAM usage tracking\n• Per-process VRAM breakdown\n• Dark & Light theme support\n• JSON-based multi-language localization"
+    "EndTaskConfirmTitle": "End Task",
+    "EndTaskConfirmMessage": "Are you sure you want to end {0} (PID: {1})?\n\nUnsaved data may be lost.",
+    "EndTaskFailedTitle": "Error Ending Task",
+    "EndTaskFailedMessage": "Could not end {0} (PID: {1}).\n\nReason: {2}",
+    "FileNotFoundMessage": "Could not find executable file location.",
+
+    "AboutDialogTitle": "About VRAMViewer",
+    "AboutDialogMessageContent": "A real-time GPU VRAM monitoring utility using DirectX (DXGI) and NVIDIA Management Library (NVML).\n\n• Per-process VRAM breakdown\n• Dark & Light theme support\n• JSON-based multi-language localization"
   }
 }
