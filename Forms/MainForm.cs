@@ -109,7 +109,8 @@ namespace VramMonitor.Forms
 
         private void ApplyLocalization()
         {
-            Text = I18n.T("AppTitle");
+            string baseTitle = I18n.T("AppTitle");
+            Text = (_selectedAdapter != null && _selectedAdapter.IsAlpha) ? $"{baseTitle} [Alpha]" : baseTitle;
 
             // メニュー - File
             _menuFile.Text       = I18n.T("MenuFile");
@@ -541,6 +542,16 @@ namespace VramMonitor.Forms
 
         private void OnBannerClick(object? sender, EventArgs e)
         {
+            if (_selectedAdapter != null && _selectedAdapter.IsAlpha)
+            {
+                MessageBox.Show(
+                    I18n.T("AlphaDiagDialogMessage", _selectedAdapter.Name),
+                    I18n.T("AlphaDiagDialogTitle"),
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
             if (!string.IsNullOrEmpty(_nvmlStatusMessage))
             {
                 MessageBox.Show(
@@ -594,37 +605,52 @@ namespace VramMonitor.Forms
                 return;
             }
 
-            var preferred = _adapters.FirstOrDefault(a => a.IsNvidia) ?? _adapters[0];
+            var preferred = _adapters.FirstOrDefault(a => a.IsNvidia)
+                ?? _adapters.FirstOrDefault(a => a.IsAmd && a.IsIntegrated)
+                ?? _adapters[0];
             _gpuSelector.SelectedItem = preferred;
+            _selectedAdapter = preferred;
 
+            ApplyLocalization();
             UpdateBannerStatus();
             _timer.Start();
         }
 
         private void UpdateBannerStatus()
         {
-            if (_selectedAdapter != null && _selectedAdapter.IsNvidia && !_nvmlReady)
+            if (_selectedAdapter != null)
             {
-                if (_nvmlStatus == NvmlStatus.DllNotFound)
+                if (_selectedAdapter.IsAlpha)
                 {
-                    _bannerLabel.Text = I18n.T("BannerNvmlDllNotFound");
+                    _bannerLabel.Text = I18n.T("BannerAlphaSupport", _selectedAdapter.Name);
                     _bannerPanel.Visible = true;
+                    return;
                 }
-                else if (_nvmlStatus == NvmlStatus.DriverNotLoaded)
+
+                if (_selectedAdapter.IsNvidia && !_nvmlReady)
                 {
-                    _bannerLabel.Text = I18n.T("BannerNvmlDriverNotLoaded");
-                    _bannerPanel.Visible = true;
-                }
-                else if (_nvmlStatus != NvmlStatus.Ready)
-                {
-                    _bannerLabel.Text = I18n.T("BannerNvmlError");
-                    _bannerPanel.Visible = true;
+                    if (_nvmlStatus == NvmlStatus.DllNotFound)
+                    {
+                        _bannerLabel.Text = I18n.T("BannerNvmlDllNotFound");
+                        _bannerPanel.Visible = true;
+                        return;
+                    }
+                    else if (_nvmlStatus == NvmlStatus.DriverNotLoaded)
+                    {
+                        _bannerLabel.Text = I18n.T("BannerNvmlDriverNotLoaded");
+                        _bannerPanel.Visible = true;
+                        return;
+                    }
+                    else if (_nvmlStatus != NvmlStatus.Ready)
+                    {
+                        _bannerLabel.Text = I18n.T("BannerNvmlError");
+                        _bannerPanel.Visible = true;
+                        return;
+                    }
                 }
             }
-            else
-            {
-                _bannerPanel.Visible = false;
-            }
+
+            _bannerPanel.Visible = false;
         }
 
         private void OnGpuSelected(object? sender, EventArgs e)
@@ -640,6 +666,7 @@ namespace VramMonitor.Forms
             }
 
             _collector.ClearCache();
+            ApplyLocalization();
             UpdateBannerStatus();
             RefreshData();
         }
@@ -682,6 +709,16 @@ namespace VramMonitor.Forms
                     {
                         totalDedicated = seg.Value.CurrentUsage;
                         if (seg.Value.Budget > 0) maxDedicated = seg.Value.Budget;
+                    }
+                    else if (_selectedAdapter.IsIntegrated)
+                    {
+                        // iGPUで専用VRAMセグメントが0または極小の場合は共有メモリセグメントもクエリ
+                        var segShared = DxgiHelper.QueryVideoMemory(_selectedAdapter.LuidLow, _selectedAdapter.LuidHigh, 1);
+                        if (segShared.HasValue && segShared.Value.CurrentUsage > 0)
+                        {
+                            totalDedicated = segShared.Value.CurrentUsage;
+                            if (segShared.Value.Budget > 0) maxDedicated = segShared.Value.Budget;
+                        }
                     }
                 }
 
@@ -890,8 +927,9 @@ namespace VramMonitor.Forms
         {
             if (_selectedAdapter == null) return;
 
-            if (_gpuNameLabel.Text != _selectedAdapter.Name)
-                _gpuNameLabel.Text = _selectedAdapter.Name;
+            string displayName = _selectedAdapter.ToString();
+            if (_gpuNameLabel.Text != displayName)
+                _gpuNameLabel.Text = displayName;
 
             double usedGb  = totalDedicatedUsed / 1024.0 / 1024.0 / 1024.0;
             double totalGb = maxDedicatedBytes  / 1024.0 / 1024.0 / 1024.0;
@@ -913,7 +951,12 @@ namespace VramMonitor.Forms
                 shared = $"  {sharedLabel}: {sharedUsedGb:0.00} GB / {sharedTotalGb:0.00} GB";
             }
 
-            string sourceTag = isNvmlActive ? "  ※ NVML" : "";
+            string sourceTag = isNvmlActive
+                ? "  ※ NVML"
+                : (_selectedAdapter.IsAlpha
+                    ? (_selectedAdapter.IsIntegrated ? "  ※ DXGI [Alpha: iGPU]" : "  ※ DXGI [Alpha]")
+                    : "  ※ DXGI");
+
             string headerText = maxDedicatedBytes > 0
                 ? $"{dedicatedLabel}: {usedGb:0.00} GB / {totalGb:0.00} GB ({pct:0}%){shared}{sourceTag}"
                 : I18n.T("NoGpuMemoryInfo");

@@ -251,7 +251,10 @@ namespace VramMonitor.Services
             ["BannerNvmlDllNotFound"] = "⚠️ nvml.dll not found (DXGI fallback active - Click for instructions)",
             ["BannerNvmlDriverNotLoaded"] = "⚠️ NVIDIA driver not loaded (DXGI fallback active - Click for details)",
             ["BannerNvmlError"] = "⚠️ NVML initialization error (DXGI fallback active - Click for details)",
+            ["BannerAlphaSupport"] = "ℹ️ Experimental Support (Alpha): {0} - Monitoring via DXGI (Click for details)",
             ["NvmlDiagDialogTitle"] = "NVML (NVIDIA Management Library) Diagnostics",
+            ["AlphaDiagDialogTitle"] = "GPU Experimental Support (Alpha)",
+            ["AlphaDiagDialogMessage"] = "Detected GPU: {0}\n\nThis environment is operating under Alpha (Experimental) support.\nGPU memory usage is monitored and displayed using Windows DXGI and Performance Counters.",
             ["AboutDialogTitle"] = "About VRAM Monitor",
             ["AboutDialogMessage"] = "VRAM Monitor v1.0.0\n\nA real-time GPU VRAM monitoring utility using DirectX (DXGI) and NVIDIA Management Library (NVML).\n\n• Real-time VRAM usage tracking\n• Per-process VRAM breakdown\n• Dark & Light theme support\n• JSON-based multi-language localization"
         };
@@ -296,7 +299,10 @@ namespace VramMonitor.Services
             ["BannerNvmlDllNotFound"] = "⚠️ nvml.dll が見つかりません (DXGIフォールバック動作中 - クリックで解決手順を表示)",
             ["BannerNvmlDriverNotLoaded"] = "⚠️ NVIDIA ドライバが読み込まれていません (DXGIフォールバック動作中 - クリックで詳細)",
             ["BannerNvmlError"] = "⚠️ NVML 初期化エラー (DXGIフォールバック動作中 - クリックで詳細)",
+            ["BannerAlphaSupport"] = "ℹ️ 実験的サポート (Alpha): {0} - DXGI 経由で監視中 (クリックで詳細)",
             ["NvmlDiagDialogTitle"] = "NVML (NVIDIA Management Library) 診断情報",
+            ["AlphaDiagDialogTitle"] = "GPU 実験的サポート (Alpha)",
+            ["AlphaDiagDialogMessage"] = "検出された GPU: {0}\n\n本環境は Alpha 版（実験的対応）として動作しています。\nWindows DXGI およびパフォーマンスカウンターを使用して GPU メモリ使用状況を取得・表示しています。",
             ["AboutDialogTitle"] = "VRAM Monitor について",
             ["AboutDialogMessage"] = "VRAM Monitor v1.0.0\n\nDirectX (DXGI) および NVIDIA Management Library (NVML) を使用した GPU VRAM 監視ツールです。\n\n・リアルタイム VRAM 使用量監視\n・プロセス別 VRAM 内訳表示\n・ダーク / ライトテーマ対応\n・JSONファイルによる多言語対応"
         };

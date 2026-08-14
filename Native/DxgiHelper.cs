@@ -10,7 +10,12 @@ namespace VramMonitor.Native
         public string Name     { get; init; } = "";
         public uint   LuidLow  { get; init; }
         public int    LuidHigh { get; init; }
+        public uint   VendorId { get; init; }
         public bool   IsNvidia { get; init; }
+        public bool   IsAmd    { get; init; }
+        public bool   IsIntel  { get; init; }
+        public bool   IsIntegrated { get; init; }
+        public bool   IsAlpha  => !(IsNvidia || (IsAmd && IsIntegrated));
         public ulong  DedicatedVideoMemory  { get; init; }
         public ulong  DedicatedSystemMemory { get; init; }
         public ulong  SharedSystemMemory    { get; init; }
@@ -26,7 +31,15 @@ namespace VramMonitor.Native
         public string LuidFilter =>
             VerifiedLuidPart ?? $"luid_0x{LuidHigh:X8}_0x{LuidLow:X8}";
 
-        public override string ToString() => Name;
+        public override string ToString()
+        {
+            if (IsAlpha)
+            {
+                string tag = IsIntegrated ? "[Alpha: iGPU]" : "[Alpha]";
+                return $"{Name} {tag}";
+            }
+            return Name;
+        }
     }
 
     /// <summary>DXGI QueryVideoMemoryInfo の結果。</summary>
@@ -65,7 +78,11 @@ namespace VramMonitor.Native
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate uint ReleaseDel(IntPtr self);
 
-        private const uint NvidiaVendorId = 0x10DE;
+        private const uint NvidiaVendorId    = 0x10DE;
+        private const uint AmdVendorId       = 0x1002;
+        private const uint AmdVendorIdAlt    = 0x1022;
+        private const uint IntelVendorId     = 0x8086;
+        private const uint IntelVendorIdAlt  = 0x8087;
 
         private const int DescSize       = 304;
         private const int VendorIdOffset = 256;
@@ -105,7 +122,11 @@ namespace VramMonitor.Native
                     Name                  = raw.Name,
                     LuidLow               = raw.LuidLow,
                     LuidHigh              = raw.LuidHigh,
+                    VendorId              = raw.VendorId,
                     IsNvidia              = raw.IsNvidia,
+                    IsAmd                 = raw.IsAmd,
+                    IsIntel               = raw.IsIntel,
+                    IsIntegrated          = raw.IsIntegrated,
                     DedicatedVideoMemory  = raw.DedicatedVideoMemory,
                     DedicatedSystemMemory = raw.DedicatedSystemMemory,
                     SharedSystemMemory    = raw.SharedSystemMemory,
@@ -188,7 +209,11 @@ namespace VramMonitor.Native
             public string Name                  { get; init; } = "";
             public uint   LuidLow               { get; init; }
             public int    LuidHigh              { get; init; }
+            public uint   VendorId              { get; init; }
             public bool   IsNvidia              { get; init; }
+            public bool   IsAmd                 { get; init; }
+            public bool   IsIntel               { get; init; }
+            public bool   IsIntegrated          { get; init; }
             public ulong  DedicatedVideoMemory  { get; init; }
             public ulong  DedicatedSystemMemory { get; init; }
             public ulong  SharedSystemMemory    { get; init; }
@@ -212,7 +237,7 @@ namespace VramMonitor.Native
 
                             uint vendorId = (uint)Marshal.ReadInt32(descBuf, VendorIdOffset);
 
-                            if (vendorId == 0x1414) return;
+                            if (vendorId == 0x1414) return; // Microsoft Basic Render Driver / WARP
 
                             uint luidLow  = (uint)Marshal.ReadInt32(descBuf, LuidLowOffset);
                             int  luidHigh = Marshal.ReadInt32(descBuf, LuidHighOffset);
@@ -222,12 +247,33 @@ namespace VramMonitor.Native
                             ulong dedicatedSys   = (ulong)Marshal.ReadInt64(descBuf, DedicatedSystemMemoryOffset);
                             ulong sharedSys      = (ulong)Marshal.ReadInt64(descBuf, SharedSystemMemoryOffset);
 
+                            bool isNvidia = vendorId == NvidiaVendorId;
+                            bool isAmd    = vendorId == AmdVendorId || vendorId == AmdVendorIdAlt;
+                            bool isIntel  = vendorId == IntelVendorId || vendorId == IntelVendorIdAlt;
+
+                            // iGPU判定:
+                            // 1. 専用VRAMが512MB以下かつ共有メモリが専用VRAMより大きい
+                            // 2. AMD/Intelで、専用VRAMが2GB以下かつ共有メモリが専用VRAMの2倍以上あり、名前にdGPU明確名称(RX 6/7/8xxx等)が含まれない場合
+                            bool isIntegrated = dedicatedVideo <= 512UL * 1024 * 1024 && sharedSys > dedicatedVideo;
+                            if (!isIntegrated && (isAmd || isIntel) && dedicatedVideo <= 2048UL * 1024 * 1024 && sharedSys >= dedicatedVideo * 2)
+                            {
+                                string lowerName = name.ToLowerInvariant();
+                                if (lowerName.Contains("graphics") || lowerName.Contains("vega") || lowerName.Contains("uhd") || lowerName.Contains("iris"))
+                                {
+                                    isIntegrated = true;
+                                }
+                            }
+
                             list.Add(new RawAdapter
                             {
                                 Name                  = name,
                                 LuidLow               = luidLow,
                                 LuidHigh              = luidHigh,
-                                IsNvidia              = vendorId == NvidiaVendorId,
+                                VendorId              = vendorId,
+                                IsNvidia              = isNvidia,
+                                IsAmd                 = isAmd,
+                                IsIntel               = isIntel,
+                                IsIntegrated          = isIntegrated,
                                 DedicatedVideoMemory  = dedicatedVideo,
                                 DedicatedSystemMemory = dedicatedSys,
                                 SharedSystemMemory    = sharedSys,

@@ -49,7 +49,10 @@
     "BannerNvmlDllNotFound": "⚠️ nvml.dll not found (DXGI fallback active - Click for instructions)",
     "BannerNvmlDriverNotLoaded": "⚠️ NVIDIA driver not loaded (DXGI fallback active - Click for details)",
     "BannerNvmlError": "⚠️ NVML initialization error (DXGI fallback active - Click for details)",
+    "BannerAlphaSupport": "ℹ️ Experimental Support (Alpha): {0} - Monitoring via DXGI (Click for details)",
     "NvmlDiagDialogTitle": "NVML (NVIDIA Management Library) Diagnostics",
+    "AlphaDiagDialogTitle": "GPU Experimental Support (Alpha)",
+    "AlphaDiagDialogMessage": "Detected GPU: {0}\n\nThis environment is operating under Alpha (Experimental) support.\nGPU memory usage is monitored and displayed using Windows DXGI and Performance Counters.",
 
     "AboutDialogTitle": "About VRAM Monitor",
     "AboutDialogMessage": "VRAM Monitor v1.0.0\n\nA real-time GPU VRAM monitoring utility using DirectX (DXGI) and NVIDIA Management Library (NVML).\n\n• Real-time VRAM usage tracking\n• Per-process VRAM breakdown\n• Dark & Light theme support\n• JSON-based multi-language localization"
