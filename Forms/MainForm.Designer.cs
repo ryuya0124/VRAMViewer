@@ -51,8 +51,8 @@ namespace VramMonitor.Forms
             _headerPanel = new Panel
             {
                 Dock    = DockStyle.Top,
-                Height  = 120,
-                Padding = new Padding(12, 10, 12, 6),
+                Height  = 130,
+                Padding = new Padding(12, 10, 12, 8),
             };
 
             // Top row container inside header: GPU Name (left) & Theme Toggle Button (right)
@@ -90,8 +90,9 @@ namespace VramMonitor.Forms
                 Dock          = DockStyle.Top,
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 DrawMode      = DrawMode.OwnerDrawFixed,
-                ItemHeight    = 20,
-                Height        = 26,
+                ItemHeight    = 24,
+                Height        = 30,
+                Font          = new Font("Segoe UI", 9F),
                 FlatStyle     = FlatStyle.Flat,
             };
             _gpuSelector.DrawItem += OnGpuSelectorDrawItem;
@@ -100,7 +101,7 @@ namespace VramMonitor.Forms
             {
                 Text   = "",
                 Dock   = DockStyle.Top,
-                Height = 22,
+                Height = 24,
             };
 
             _progressBar = new ModernProgressBar
@@ -125,11 +126,15 @@ namespace VramMonitor.Forms
                 FullRowSelect = true,
                 GridLines     = true,
                 BorderStyle   = BorderStyle.None,
+                OwnerDraw     = true,
             };
             _listView.Columns.Add("PID",       70);
-            _listView.Columns.Add("プロセス名", 270);
-            _listView.Columns.Add("専用 VRAM",  145, HorizontalAlignment.Right);
-            _listView.Columns.Add("共有 VRAM",  145, HorizontalAlignment.Right);
+            _listView.Columns.Add("プロセス名", 330);
+            _listView.Columns.Add("専用 VRAM",  155, HorizontalAlignment.Right);
+            _listView.Columns.Add("共有 VRAM",  155, HorizontalAlignment.Right);
+            _listView.DrawColumnHeader += OnListViewDrawColumnHeader;
+            _listView.DrawItem         += OnListViewDrawItem;
+            _listView.DrawSubItem      += OnListViewDrawSubItem;
 
             _listPanel = new Panel
             {

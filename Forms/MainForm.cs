@@ -151,18 +151,55 @@ namespace VramMonitor.Forms
                 : (isSelected ? SystemColors.HighlightText : ThemeManager.Light.TextPrimary);
 
             using var brushBg = new SolidBrush(bg);
-            using var brushFg = new SolidBrush(fg);
-
             e.Graphics.FillRectangle(brushBg, e.Bounds);
 
-            var textRect = new Rectangle(e.Bounds.X + 4, e.Bounds.Y + 2, e.Bounds.Width - 8, e.Bounds.Height - 4);
-            var flags = TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis;
+            var textRect = new Rectangle(e.Bounds.X + 6, e.Bounds.Y, Math.Max(0, e.Bounds.Width - 12), e.Bounds.Height);
+            var flags = TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine;
             TextRenderer.DrawText(e.Graphics, itemText, e.Font ?? Font, textRect, fg, flags);
 
             if ((e.State & DrawItemState.Focus) == DrawItemState.Focus && !isSelected)
             {
                 e.DrawFocusRectangle();
             }
+        }
+
+        private void OnListViewDrawColumnHeader(object? sender, DrawListViewColumnHeaderEventArgs e)
+        {
+            Color headerBg    = _isDarkMode ? Color.FromArgb(42, 42, 45) : SystemColors.Control;
+            Color headerFg    = _isDarkMode ? ThemeManager.Dark.TextPrimary : SystemColors.ControlText;
+            Color borderColor = _isDarkMode ? ThemeManager.Dark.ControlBorder : SystemColors.ControlDark;
+
+            // 背景描画
+            using var brushBg = new SolidBrush(headerBg);
+            e.Graphics.FillRectangle(brushBg, e.Bounds);
+
+            // 右側の区切り線と下線を描画
+            using var penBorder = new Pen(borderColor);
+            e.Graphics.DrawLine(penBorder, e.Bounds.Right - 1, e.Bounds.Top + 2, e.Bounds.Right - 1, e.Bounds.Bottom - 3);
+            e.Graphics.DrawLine(penBorder, e.Bounds.Left, e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
+
+            // ヘッダーテキスト描画
+            var align = e.Header?.TextAlign ?? HorizontalAlignment.Left;
+            var flags = TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine;
+            flags |= align switch
+            {
+                HorizontalAlignment.Right  => TextFormatFlags.Right,
+                HorizontalAlignment.Center => TextFormatFlags.HorizontalCenter,
+                _                          => TextFormatFlags.Left
+            };
+
+            var textRect = new Rectangle(e.Bounds.X + 6, e.Bounds.Y, Math.Max(0, e.Bounds.Width - 12), e.Bounds.Height);
+            TextRenderer.DrawText(e.Graphics, e.Header?.Text ?? "", e.Font ?? _listView.Font, textRect, headerFg, flags);
+        }
+
+        private void OnListViewDrawItem(object? sender, DrawListViewItemEventArgs e)
+        {
+            // サブアイテム描画に委託
+        }
+
+        private void OnListViewDrawSubItem(object? sender, DrawListViewSubItemEventArgs e)
+        {
+            e.DrawDefault = true;
         }
 
         protected override void WndProc(ref Message m)
