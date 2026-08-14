@@ -6,6 +6,33 @@ namespace VramMonitor.Forms
 {
     public sealed partial class MainForm
     {
+        private MenuStrip         _menuStrip = null!;
+        private ToolStripMenuItem _menuFile = null!;
+        private ToolStripMenuItem _menuRefreshNow = null!;
+        private ToolStripSeparator _menuSeparatorFile = null!;
+        private ToolStripMenuItem _menuExit = null!;
+
+        private ToolStripMenuItem _menuView = null!;
+        private ToolStripMenuItem _menuTheme = null!;
+        private ToolStripMenuItem _menuThemeAuto = null!;
+        private ToolStripMenuItem _menuThemeDark = null!;
+        private ToolStripMenuItem _menuThemeLight = null!;
+        private ToolStripMenuItem _menuAlwaysOnTop = null!;
+
+        private ToolStripMenuItem _menuSettings = null!;
+        private ToolStripMenuItem _menuRefreshInterval = null!;
+        private ToolStripMenuItem _menuInterval500 = null!;
+        private ToolStripMenuItem _menuInterval1000 = null!;
+        private ToolStripMenuItem _menuInterval1500 = null!;
+        private ToolStripMenuItem _menuInterval2000 = null!;
+        private ToolStripMenuItem _menuInterval3000 = null!;
+        private ToolStripMenuItem _menuInterval5000 = null!;
+        private ToolStripMenuItem _menuLanguage = null!;
+
+        private ToolStripMenuItem _menuHelp = null!;
+        private ToolStripMenuItem _menuNvmlDiag = null!;
+        private ToolStripMenuItem _menuAbout = null!;
+
         private Panel             _headerPanel = null!;
         private Panel             _listPanel = null!;
         private Label             _gpuNameLabel = null!;
@@ -14,6 +41,10 @@ namespace VramMonitor.Forms
         private Label             _totalLabel = null!;
         private ModernProgressBar _progressBar = null!;
         private DoubleBufferedListView _listView = null!;
+        private ColumnHeader      _colPid = null!;
+        private ColumnHeader      _colName = null!;
+        private ColumnHeader      _colDedicated = null!;
+        private ColumnHeader      _colShared = null!;
         private Label             _updatedLabel = null!;
         private Panel             _bannerPanel = null!;
         private Label             _bannerLabel = null!;
@@ -22,10 +53,76 @@ namespace VramMonitor.Forms
         {
             Text          = "VRAM Monitor";
             Width         = 780;
-            Height        = 600;
-            MinimumSize   = new Size(580, 420);
+            Height        = 620;
+            MinimumSize   = new Size(580, 440);
             StartPosition = FormStartPosition.CenterScreen;
             Font          = new Font("Segoe UI", 9F);
+
+            // ---- MenuStrip ----
+            _menuStrip = new MenuStrip
+            {
+                Dock = DockStyle.Top,
+                Font = new Font("Segoe UI", 9F),
+            };
+
+            // File Menu
+            _menuFile = new ToolStripMenuItem();
+            _menuRefreshNow = new ToolStripMenuItem { ShortcutKeys = Keys.F5 };
+            _menuRefreshNow.Click += (_, _) => RefreshData();
+            _menuSeparatorFile = new ToolStripSeparator();
+            _menuExit = new ToolStripMenuItem { ShortcutKeys = Keys.Alt | Keys.F4 };
+            _menuExit.Click += (_, _) => Close();
+            _menuFile.DropDownItems.AddRange(new ToolStripItem[] { _menuRefreshNow, _menuSeparatorFile, _menuExit });
+
+            // View Menu
+            _menuView = new ToolStripMenuItem();
+            _menuTheme = new ToolStripMenuItem();
+            _menuThemeAuto = new ToolStripMenuItem();
+            _menuThemeAuto.Click += (_, _) => SetTheme(Theme.AppTheme.Auto);
+            _menuThemeDark = new ToolStripMenuItem();
+            _menuThemeDark.Click += (_, _) => SetTheme(Theme.AppTheme.Dark);
+            _menuThemeLight = new ToolStripMenuItem();
+            _menuThemeLight.Click += (_, _) => SetTheme(Theme.AppTheme.Light);
+            _menuTheme.DropDownItems.AddRange(new ToolStripItem[] { _menuThemeAuto, _menuThemeDark, _menuThemeLight });
+
+            _menuAlwaysOnTop = new ToolStripMenuItem { CheckOnClick = true };
+            _menuAlwaysOnTop.Click += OnAlwaysOnTopClick;
+
+            _menuView.DropDownItems.AddRange(new ToolStripItem[] { _menuTheme, _menuAlwaysOnTop });
+
+            // Settings Menu
+            _menuSettings = new ToolStripMenuItem();
+            _menuRefreshInterval = new ToolStripMenuItem();
+            _menuInterval500 = new ToolStripMenuItem();
+            _menuInterval500.Click += (_, _) => SetRefreshInterval(500);
+            _menuInterval1000 = new ToolStripMenuItem();
+            _menuInterval1000.Click += (_, _) => SetRefreshInterval(1000);
+            _menuInterval1500 = new ToolStripMenuItem();
+            _menuInterval1500.Click += (_, _) => SetRefreshInterval(1500);
+            _menuInterval2000 = new ToolStripMenuItem();
+            _menuInterval2000.Click += (_, _) => SetRefreshInterval(2000);
+            _menuInterval3000 = new ToolStripMenuItem();
+            _menuInterval3000.Click += (_, _) => SetRefreshInterval(3000);
+            _menuInterval5000 = new ToolStripMenuItem();
+            _menuInterval5000.Click += (_, _) => SetRefreshInterval(5000);
+            _menuRefreshInterval.DropDownItems.AddRange(new ToolStripItem[] {
+                _menuInterval500, _menuInterval1000, _menuInterval1500,
+                _menuInterval2000, _menuInterval3000, _menuInterval5000
+            });
+
+            _menuLanguage = new ToolStripMenuItem();
+            _menuSettings.DropDownItems.AddRange(new ToolStripItem[] { _menuRefreshInterval, _menuLanguage });
+
+            // Help Menu
+            _menuHelp = new ToolStripMenuItem();
+            _menuNvmlDiag = new ToolStripMenuItem();
+            _menuNvmlDiag.Click += OnBannerClick;
+            _menuAbout = new ToolStripMenuItem();
+            _menuAbout.Click += OnMenuAboutClick;
+            _menuHelp.DropDownItems.AddRange(new ToolStripItem[] { _menuNvmlDiag, _menuAbout });
+
+            _menuStrip.Items.AddRange(new ToolStripItem[] { _menuFile, _menuView, _menuSettings, _menuHelp });
+            MainMenuStrip = _menuStrip;
 
             // ---- Banner panel (Warning / Status) ----
             _bannerPanel = new Panel
@@ -65,7 +162,7 @@ namespace VramMonitor.Forms
             _themeButton = new Button
             {
                 Dock      = DockStyle.Right,
-                Width     = 84,
+                Width     = 90,
                 Height    = 26,
                 FlatStyle = FlatStyle.Flat,
                 Font      = new Font("Segoe UI", 8F),
@@ -76,7 +173,7 @@ namespace VramMonitor.Forms
 
             _gpuNameLabel = new Label
             {
-                Text     = "初期化中...",
+                Text     = "",
                 Font     = new Font("Segoe UI", 11.5F, FontStyle.Bold),
                 Dock     = DockStyle.Fill,
                 AutoSize = false,
@@ -128,10 +225,12 @@ namespace VramMonitor.Forms
                 BorderStyle   = BorderStyle.None,
                 OwnerDraw     = true,
             };
-            _listView.Columns.Add("PID",       70);
-            _listView.Columns.Add("プロセス名", 330);
-            _listView.Columns.Add("専用 VRAM",  150, HorizontalAlignment.Right);
-            _listView.Columns.Add("共有 VRAM",  150, HorizontalAlignment.Right);
+            _colPid       = new ColumnHeader { Text = "PID", Width = 70 };
+            _colName      = new ColumnHeader { Text = "Process Name", Width = 330 };
+            _colDedicated = new ColumnHeader { Text = "Dedicated VRAM", Width = 150, TextAlign = HorizontalAlignment.Right };
+            _colShared    = new ColumnHeader { Text = "Shared VRAM", Width = 150, TextAlign = HorizontalAlignment.Right };
+
+            _listView.Columns.AddRange(new[] { _colPid, _colName, _colDedicated, _colShared });
             _listView.ColumnClick      += OnListViewColumnClick;
             _listView.DrawColumnHeader += OnListViewDrawColumnHeader;
             _listView.DrawItem         += OnListViewDrawItem;
@@ -154,10 +253,12 @@ namespace VramMonitor.Forms
                 Font    = new Font("Segoe UI", 8F),
             };
 
+            // Controls 階層順序
             Controls.Add(_listPanel);
             Controls.Add(_updatedLabel);
             Controls.Add(_bannerPanel);
             Controls.Add(_headerPanel);
+            Controls.Add(_menuStrip);
         }
     }
 }

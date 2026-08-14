@@ -12,9 +12,9 @@ namespace VramMonitor.Forms
 {
     public sealed partial class MainForm : Form
     {
-        private const int RefreshIntervalMs = 1500;
-        private const int WM_SETTINGCHANGE  = 0x001A;
-        private const int WM_THEMECHANGED   = 0x031A;
+        private const int DefaultRefreshIntervalMs = 1500;
+        private const int WM_SETTINGCHANGE         = 0x001A;
+        private const int WM_THEMECHANGED          = 0x031A;
 
         // --- Services & State ---
         private readonly System.Windows.Forms.Timer _timer;
@@ -22,6 +22,7 @@ namespace VramMonitor.Forms
 
         private AppTheme          _themeMode = AppTheme.Auto;
         private bool              _isDarkMode;
+        private int               _refreshInterval = DefaultRefreshIntervalMs;
         private IntPtr            _device;
         private bool              _nvmlReady;
         private NvmlStatus        _nvmlStatus = NvmlStatus.NotAttempted;
@@ -41,11 +42,161 @@ namespace VramMonitor.Forms
                 ControlStyles.AllPaintingInWmPaint,
                 true);
 
-            _timer = new System.Windows.Forms.Timer { Interval = RefreshIntervalMs };
+            _timer = new System.Windows.Forms.Timer { Interval = _refreshInterval };
             _timer.Tick += (_, _) => RefreshData();
 
             Load        += OnLoad;
             FormClosing += OnFormClosing;
+
+            I18n.LanguageChanged += OnLanguageChanged;
+        }
+
+        // ----------------------------------------------------------------
+        // Localization Management
+        // ----------------------------------------------------------------
+
+        private void SetLanguage(string cultureCode)
+        {
+            I18n.SelectedLanguageCode = cultureCode;
+        }
+
+        private void OnLanguageChanged()
+        {
+            ApplyLocalization();
+            ApplyTheme(); // テーマボタン等のテキスト更新を含む
+            UpdateBannerStatus();
+            RefreshData();
+        }
+
+        private void BuildLanguageMenu()
+        {
+            _menuLanguage.DropDownItems.Clear();
+
+            // 1. 自動検出
+            var autoItem = new ToolStripMenuItem(I18n.T("LangAuto"))
+            {
+                Checked = I18n.SelectedLanguageCode == I18n.AutoLanguageCode
+            };
+            autoItem.Click += (_, _) => SetLanguage(I18n.AutoLanguageCode);
+            _menuLanguage.DropDownItems.Add(autoItem);
+
+            _menuLanguage.DropDownItems.Add(new ToolStripSeparator());
+
+            // 2. 検出された各言語パック
+            foreach (var pack in I18n.AvailableLanguages)
+            {
+                var langItem = new ToolStripMenuItem(pack.DisplayName)
+                {
+                    Checked = I18n.SelectedLanguageCode.Equals(pack.CultureCode, StringComparison.OrdinalIgnoreCase)
+                };
+                string code = pack.CultureCode;
+                langItem.Click += (_, _) => SetLanguage(code);
+                _menuLanguage.DropDownItems.Add(langItem);
+            }
+
+            _menuLanguage.DropDownItems.Add(new ToolStripSeparator());
+
+            // 3. 言語フォルダを開く
+            var openFolderItem = new ToolStripMenuItem(I18n.T("MenuOpenLanguagesFolder"));
+            openFolderItem.Click += (_, _) =>
+            {
+                I18n.OpenLanguagesFolder();
+                // フォルダオープン後、メニュー再展開時などに反映できるようにリロード
+                I18n.ReloadLanguages();
+            };
+            _menuLanguage.DropDownItems.Add(openFolderItem);
+        }
+
+        private void ApplyLocalization()
+        {
+            Text = I18n.T("AppTitle");
+
+            // メニュー - File
+            _menuFile.Text       = I18n.T("MenuFile");
+            _menuRefreshNow.Text = I18n.T("MenuRefreshNow");
+            _menuExit.Text       = I18n.T("MenuExit");
+
+            // メニュー - View
+            _menuView.Text        = I18n.T("MenuView");
+            _menuTheme.Text       = I18n.T("MenuTheme");
+            _menuThemeAuto.Text   = I18n.T("ThemeAuto");
+            _menuThemeDark.Text   = I18n.T("ThemeDark");
+            _menuThemeLight.Text  = I18n.T("ThemeLight");
+            _menuAlwaysOnTop.Text = I18n.T("MenuAlwaysOnTop");
+
+            // メニュー - Settings
+            _menuSettings.Text        = I18n.T("MenuSettings");
+            _menuRefreshInterval.Text = I18n.T("MenuRefreshInterval");
+            _menuInterval500.Text     = I18n.T("Interval500ms");
+            _menuInterval1000.Text    = I18n.T("Interval1000ms");
+            _menuInterval1500.Text    = I18n.T("Interval1500ms");
+            _menuInterval2000.Text    = I18n.T("Interval2000ms");
+            _menuInterval3000.Text    = I18n.T("Interval3000ms");
+            _menuInterval5000.Text    = I18n.T("Interval5000ms");
+
+            _menuLanguage.Text = I18n.T("MenuLanguage");
+            BuildLanguageMenu();
+
+            // メニュー - Help
+            _menuHelp.Text     = I18n.T("MenuHelp");
+            _menuNvmlDiag.Text = I18n.T("MenuNvmlDiag");
+            _menuAbout.Text    = I18n.T("MenuAbout");
+
+            // ListView カラムヘッダー
+            _colPid.Text       = I18n.T("ColPid");
+            _colName.Text      = I18n.T("ColProcessName");
+            _colDedicated.Text = I18n.T("ColDedicatedVram");
+            _colShared.Text    = I18n.T("ColSharedVram");
+
+            // チェックマーク同期
+            UpdateMenuCheckStates();
+        }
+
+        private void UpdateMenuCheckStates()
+        {
+            // テーマ
+            _menuThemeAuto.Checked  = _themeMode == AppTheme.Auto;
+            _menuThemeDark.Checked  = _themeMode == AppTheme.Dark;
+            _menuThemeLight.Checked = _themeMode == AppTheme.Light;
+
+            // 更新頻度
+            _menuInterval500.Checked  = _refreshInterval == 500;
+            _menuInterval1000.Checked = _refreshInterval == 1000;
+            _menuInterval1500.Checked = _refreshInterval == 1500;
+            _menuInterval2000.Checked = _refreshInterval == 2000;
+            _menuInterval3000.Checked = _refreshInterval == 3000;
+            _menuInterval5000.Checked = _refreshInterval == 5000;
+
+            // 最前面
+            _menuAlwaysOnTop.Checked = TopMost;
+        }
+
+        private void SetRefreshInterval(int ms)
+        {
+            _refreshInterval = ms;
+            _timer.Interval = _refreshInterval;
+            UpdateMenuCheckStates();
+        }
+
+        private void SetTheme(AppTheme theme)
+        {
+            _themeMode = theme;
+            ApplyTheme();
+        }
+
+        private void OnAlwaysOnTopClick(object? sender, EventArgs e)
+        {
+            TopMost = !TopMost;
+            UpdateMenuCheckStates();
+        }
+
+        private void OnMenuAboutClick(object? sender, EventArgs e)
+        {
+            MessageBox.Show(
+                I18n.T("AboutDialogMessage"),
+                I18n.T("AboutDialogTitle"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
         }
 
         // ----------------------------------------------------------------
@@ -58,11 +209,14 @@ namespace VramMonitor.Forms
 
             _themeButton.Text = _themeMode switch
             {
-                AppTheme.Auto  => "💻 自動",
-                AppTheme.Dark  => "🌙 ダーク",
-                AppTheme.Light => "☀️ ライト",
-                _ => "💻 自動"
+                AppTheme.Auto  => I18n.T("ThemeAuto"),
+                AppTheme.Dark  => I18n.T("ThemeDark"),
+                AppTheme.Light => I18n.T("ThemeLight"),
+                _ => I18n.T("ThemeAuto")
             };
+
+            // MenuStrip のカスタムレンダラー
+            _menuStrip.Renderer = new ModernMenuRenderer(_isDarkMode);
 
             if (IsHandleCreated)
             {
@@ -74,6 +228,7 @@ namespace VramMonitor.Forms
             if (_isDarkMode)
             {
                 BackColor               = ThemeManager.Dark.WindowBg;
+                _menuStrip.BackColor    = ThemeManager.Dark.HeaderBg;
                 _headerPanel.BackColor  = ThemeManager.Dark.WindowBg;
                 _listPanel.BackColor    = ThemeManager.Dark.WindowBg;
 
@@ -100,6 +255,7 @@ namespace VramMonitor.Forms
             else
             {
                 BackColor               = ThemeManager.Light.WindowBg;
+                _menuStrip.BackColor    = ThemeManager.Light.HeaderBg;
                 _headerPanel.BackColor  = ThemeManager.Light.HeaderBg;
                 _listPanel.BackColor    = ThemeManager.Light.WindowBg;
 
@@ -124,6 +280,8 @@ namespace VramMonitor.Forms
                 _bannerLabel.ForeColor  = ThemeManager.Light.BannerText;
             }
 
+            UpdateMenuCheckStates();
+            _menuStrip.Invalidate();
             _gpuSelector.Invalidate();
             _listView.Invalidate();
             RefreshData();
@@ -357,9 +515,17 @@ namespace VramMonitor.Forms
             {
                 MessageBox.Show(
                     _nvmlStatusMessage,
-                    "NVML (NVIDIA Management Library) 診断情報",
+                    I18n.T("NvmlDiagDialogTitle"),
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
+            }
+            else
+            {
+                MessageBox.Show(
+                    _nvmlReady ? "NVML is initialized and operational." : "NVML is not active.",
+                    I18n.T("NvmlDiagDialogTitle"),
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
             }
         }
 
@@ -369,6 +535,7 @@ namespace VramMonitor.Forms
 
         private void OnLoad(object? sender, EventArgs e)
         {
+            ApplyLocalization();
             ApplyTheme();
             AdjustColumnWidths();
 
@@ -393,7 +560,7 @@ namespace VramMonitor.Forms
 
             if (_adapters.Count == 0)
             {
-                _gpuNameLabel.Text = "GPU が見つかりません";
+                _gpuNameLabel.Text = I18n.T("GpuNotFound");
                 return;
             }
 
@@ -410,17 +577,17 @@ namespace VramMonitor.Forms
             {
                 if (_nvmlStatus == NvmlStatus.DllNotFound)
                 {
-                    _bannerLabel.Text = "⚠️ nvml.dll が見つかりません (DXGIフォールバック動作中 - クリックで解決手順を表示)";
+                    _bannerLabel.Text = I18n.T("BannerNvmlDllNotFound");
                     _bannerPanel.Visible = true;
                 }
                 else if (_nvmlStatus == NvmlStatus.DriverNotLoaded)
                 {
-                    _bannerLabel.Text = "⚠️ NVIDIA ドライバが読み込まれていません (DXGIフォールバック動作中 - クリックで詳細)";
+                    _bannerLabel.Text = I18n.T("BannerNvmlDriverNotLoaded");
                     _bannerPanel.Visible = true;
                 }
                 else if (_nvmlStatus != NvmlStatus.Ready)
                 {
-                    _bannerLabel.Text = "⚠️ NVML 初期化エラー (DXGIフォールバック動作中 - クリックで詳細)";
+                    _bannerLabel.Text = I18n.T("BannerNvmlError");
                     _bannerPanel.Visible = true;
                 }
             }
@@ -517,7 +684,7 @@ namespace VramMonitor.Forms
                 UpdateHeader(rows, totalDedicated, maxDedicated, isNvmlActive);
                 UpdateListViewRows(rows);
 
-                string updatedText = $"最終更新: {DateTime.Now:HH:mm:ss}";
+                string updatedText = I18n.T("LastUpdated", DateTime.Now.ToString("HH:mm:ss"));
                 if (_updatedLabel.Text != updatedText)
                 {
                     _updatedLabel.Text = updatedText;
@@ -532,6 +699,8 @@ namespace VramMonitor.Forms
 
         private void SortRows(List<ProcessRow> rows)
         {
+            string systemProcessName = I18n.T("SystemKernelProcess");
+
             rows.Sort((a, b) =>
             {
                 int cmp = 0;
@@ -541,8 +710,8 @@ namespace VramMonitor.Forms
                         cmp = a.Pid.CompareTo(b.Pid);
                         break;
                     case 1: // プロセス名
-                        string nameA = a.IsSystem ? "システム/カーネル (ドライバ・その他)" : _collector.GetProcessName(a.Pid);
-                        string nameB = b.IsSystem ? "システム/カーネル (ドライバ・その他)" : _collector.GetProcessName(b.Pid);
+                        string nameA = a.IsSystem ? systemProcessName : _collector.GetProcessName(a.Pid);
+                        string nameB = b.IsSystem ? systemProcessName : _collector.GetProcessName(b.Pid);
                         cmp = string.Compare(nameA, nameB, StringComparison.CurrentCultureIgnoreCase);
                         break;
                     case 2: // 専用 VRAM
@@ -579,6 +748,7 @@ namespace VramMonitor.Forms
         {
             Color systemColor = _isDarkMode ? ThemeManager.Dark.SystemRowText : ThemeManager.Light.SystemRowText;
             Color defaultColor = _isDarkMode ? ThemeManager.Dark.ListText : ThemeManager.Light.ListText;
+            string systemProcessName = I18n.T("SystemKernelProcess");
 
             // 既存アイテムを Tag (キー) でマップ化
             var existingItems = new Dictionary<string, ListViewItem>(_listView.Items.Count);
@@ -621,7 +791,7 @@ namespace VramMonitor.Forms
                 string key = row.IsSystem ? "SYSTEM" : row.Pid.ToString();
                 string pidText = row.IsSystem ? "-" : row.Pid.ToString();
                 string name = row.IsSystem
-                    ? "システム/カーネル (ドライバ・その他)"
+                    ? systemProcessName
                     : _collector.GetProcessName(row.Pid);
                 string dedicated = FormatHelper.FormatVram(row.LocalBytes);
                 string shared = FormatHelper.FormatVram(row.NonLocalBytes);
@@ -697,6 +867,9 @@ namespace VramMonitor.Forms
             double totalGb = maxDedicatedBytes  / 1024.0 / 1024.0 / 1024.0;
             double pct     = maxDedicatedBytes > 0 ? (double)totalDedicatedUsed / maxDedicatedBytes * 100.0 : 0.0;
 
+            string dedicatedLabel = I18n.T("HeaderDedicated");
+            string sharedLabel = I18n.T("HeaderShared");
+
             string shared = "";
             if (_selectedAdapter.SharedSystemMemory > 0)
             {
@@ -707,13 +880,13 @@ namespace VramMonitor.Forms
                 }
                 double sharedUsedGb  = sharedSum / 1024.0 / 1024.0 / 1024.0;
                 double sharedTotalGb = _selectedAdapter.SharedSystemMemory / 1024.0 / 1024.0 / 1024.0;
-                shared = $"  共有: {sharedUsedGb:0.00} GB / {sharedTotalGb:0.00} GB";
+                shared = $"  {sharedLabel}: {sharedUsedGb:0.00} GB / {sharedTotalGb:0.00} GB";
             }
 
             string sourceTag = isNvmlActive ? "  ※ NVML" : "";
             string headerText = maxDedicatedBytes > 0
-                ? $"専用: {usedGb:0.00} GB / {totalGb:0.00} GB ({pct:0}%){shared}{sourceTag}"
-                : "GPU メモリ情報を取得できません";
+                ? $"{dedicatedLabel}: {usedGb:0.00} GB / {totalGb:0.00} GB ({pct:0}%){shared}{sourceTag}"
+                : I18n.T("NoGpuMemoryInfo");
 
             if (_totalLabel.Text != headerText)
                 _totalLabel.Text = headerText;
@@ -727,6 +900,7 @@ namespace VramMonitor.Forms
 
         private void OnFormClosing(object? sender, FormClosingEventArgs e)
         {
+            I18n.LanguageChanged -= OnLanguageChanged;
             _timer.Stop();
             if (_nvmlReady)
             {

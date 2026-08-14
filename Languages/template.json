@@ -1,0 +1,58 @@
+{
+  "_comment": "Language Pack Template for VRAM Monitor. Duplicate this file, rename it (e.g. de.json, zh-CN.json), and translate the values.",
+  "CultureCode": "your-culture-code-here (e.g. de, fr, es, zh-CN, ko)",
+  "DisplayName": "🏳️ Language Name (Native / English)",
+  "Strings": {
+    "AppTitle": "VRAM Monitor",
+    "Initializing": "Initializing...",
+    "GpuNotFound": "No GPU found",
+    "NoGpuMemoryInfo": "Unable to retrieve GPU memory information",
+    "LastUpdated": "Last updated: {0}",
+
+    "MenuFile": "&File",
+    "MenuRefreshNow": "&Refresh Now",
+    "MenuExit": "E&xit",
+
+    "MenuView": "&View",
+    "MenuTheme": "&Theme",
+    "ThemeAuto": "💻 Auto",
+    "ThemeDark": "🌙 Dark",
+    "ThemeLight": "☀️ Light",
+    "MenuAlwaysOnTop": "&Always on Top",
+
+    "MenuSettings": "&Settings",
+    "MenuRefreshInterval": "Update &Interval",
+    "Interval500ms": "0.5 sec (500 ms)",
+    "Interval1000ms": "1.0 sec (1000 ms)",
+    "Interval1500ms": "1.5 sec (1500 ms - Default)",
+    "Interval2000ms": "2.0 sec (2000 ms)",
+    "Interval3000ms": "3.0 sec (3000 ms)",
+    "Interval5000ms": "5.0 sec (5000 ms)",
+
+    "MenuLanguage": "&Language",
+    "LangAuto": "💻 Auto Detect",
+    "MenuOpenLanguagesFolder": "📁 Open Languages Folder...",
+
+    "MenuHelp": "&Help",
+    "MenuNvmlDiag": "NVML &Diagnostics...",
+    "MenuAbout": "&About VRAM Monitor...",
+
+    "ColPid": "PID",
+    "ColProcessName": "Process Name",
+    "ColDedicatedVram": "Dedicated VRAM",
+    "ColSharedVram": "Shared VRAM",
+
+    "SystemKernelProcess": "System / Kernel (Driver & Others)",
+
+    "HeaderDedicated": "Dedicated",
+    "HeaderShared": "Shared",
+
+    "BannerNvmlDllNotFound": "⚠️ nvml.dll not found (DXGI fallback active - Click for instructions)",
+    "BannerNvmlDriverNotLoaded": "⚠️ NVIDIA driver not loaded (DXGI fallback active - Click for details)",
+    "BannerNvmlError": "⚠️ NVML initialization error (DXGI fallback active - Click for details)",
+    "NvmlDiagDialogTitle": "NVML (NVIDIA Management Library) Diagnostics",
+
+    "AboutDialogTitle": "About VRAM Monitor",
+    "AboutDialogMessage": "VRAM Monitor v1.0.0\n\nA real-time GPU VRAM monitoring utility using DirectX (DXGI) and NVIDIA Management Library (NVML).\n\n• Real-time VRAM usage tracking\n• Per-process VRAM breakdown\n• Dark & Light theme support\n• JSON-based multi-language localization"
+  }
+}
