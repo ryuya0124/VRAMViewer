@@ -202,6 +202,31 @@ namespace VramMonitor.Forms
             e.DrawDefault = true;
         }
 
+        private void OnListViewResize(object? sender, EventArgs e)
+        {
+            AdjustColumnWidths();
+        }
+
+        private void AdjustColumnWidths()
+        {
+            if (_listView.Columns.Count < 4) return;
+
+            int clientWidth = _listView.ClientSize.Width;
+            if (clientWidth <= 0) return;
+
+            int pidWidth = 70;
+            int dedicatedWidth = 150;
+            int sharedWidth = 150;
+            int nameWidth = clientWidth - (pidWidth + dedicatedWidth + sharedWidth);
+
+            if (nameWidth < 120) nameWidth = 120;
+
+            _listView.Columns[0].Width = pidWidth;
+            _listView.Columns[1].Width = nameWidth;
+            _listView.Columns[2].Width = dedicatedWidth;
+            _listView.Columns[3].Width = sharedWidth;
+        }
+
         protected override void WndProc(ref Message m)
         {
             base.WndProc(ref m);
@@ -234,6 +259,7 @@ namespace VramMonitor.Forms
         private void OnLoad(object? sender, EventArgs e)
         {
             ApplyTheme();
+            AdjustColumnWidths();
 
             _gpuSelector.SelectedIndexChanged -= OnGpuSelected;
 
