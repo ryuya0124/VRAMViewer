@@ -28,6 +28,8 @@ namespace VramMonitor.Forms
         private string            _nvmlStatusMessage = "";
         private List<AdapterInfo> _adapters = new();
         private AdapterInfo?      _selectedAdapter;
+        private int               _sortColumn = 2; // デフォルト: 専用 VRAM
+        private SortOrder         _sortOrder  = SortOrder.Descending;
 
         public MainForm()
         {
@@ -168,6 +170,23 @@ namespace VramMonitor.Forms
             }
         }
 
+        private void OnListViewColumnClick(object? sender, ColumnClickEventArgs e)
+        {
+            if (e.Column == _sortColumn)
+            {
+                _sortOrder = _sortOrder == SortOrder.Ascending ? SortOrder.Descending : SortOrder.Ascending;
+            }
+            else
+            {
+                _sortColumn = e.Column;
+                // 専用VRAM(2)、共有VRAM(3)は降順から、PID(0)、プロセス名(1)は昇順から開始
+                _sortOrder = (e.Column == 2 || e.Column == 3) ? SortOrder.Descending : SortOrder.Ascending;
+            }
+
+            _listView.Invalidate();
+            RefreshData();
+        }
+
         private void OnListViewDrawColumnHeader(object? sender, DrawListViewColumnHeaderEventArgs e)
         {
             Color headerBg    = _isDarkMode ? Color.FromArgb(42, 42, 45) : SystemColors.Control;
@@ -183,6 +202,39 @@ namespace VramMonitor.Forms
             e.Graphics.DrawLine(penBorder, e.Bounds.Right - 1, e.Bounds.Top + 2, e.Bounds.Right - 1, e.Bounds.Bottom - 3);
             e.Graphics.DrawLine(penBorder, e.Bounds.Left, e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
 
+            bool isSorted = e.ColumnIndex == _sortColumn && _sortOrder != SortOrder.None;
+
+            // ソート矢印を描画
+            if (isSorted)
+            {
+                int arrowSize = 6;
+                int arrowX = e.Bounds.Right - 16;
+                int arrowY = e.Bounds.Y + (e.Bounds.Height - arrowSize) / 2;
+
+                Point[] points;
+                if (_sortOrder == SortOrder.Ascending)
+                {
+                    points = new[]
+                    {
+                        new Point(arrowX + arrowSize / 2, arrowY),
+                        new Point(arrowX + arrowSize, arrowY + arrowSize),
+                        new Point(arrowX, arrowY + arrowSize)
+                    };
+                }
+                else
+                {
+                    points = new[]
+                    {
+                        new Point(arrowX, arrowY),
+                        new Point(arrowX + arrowSize, arrowY),
+                        new Point(arrowX + arrowSize / 2, arrowY + arrowSize)
+                    };
+                }
+
+                using var arrowBrush = new SolidBrush(headerFg);
+                e.Graphics.FillPolygon(arrowBrush, points);
+            }
+
             // ヘッダーテキスト描画
             var align = e.Header?.TextAlign ?? HorizontalAlignment.Left;
             var flags = TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine;
@@ -193,7 +245,8 @@ namespace VramMonitor.Forms
                 _                          => TextFormatFlags.Left
             };
 
-            var textRect = new Rectangle(e.Bounds.X + 6, e.Bounds.Y, Math.Max(0, e.Bounds.Width - 12), e.Bounds.Height);
+            int paddingRight = isSorted ? 22 : 12;
+            var textRect = new Rectangle(e.Bounds.X + 6, e.Bounds.Y, Math.Max(0, e.Bounds.Width - paddingRight - 6), e.Bounds.Height);
             TextRenderer.DrawText(e.Graphics, e.Header?.Text ?? "", e.Font ?? _listView.Font, textRect, headerFg, flags);
         }
 
@@ -404,8 +457,8 @@ namespace VramMonitor.Forms
                     totalDedicated = processDedicatedSum;
                 }
 
-                // 5. システム行も含めて全体を使用量 (TotalBytes) 降順でソート
-                rows.Sort((a, b) => b.TotalBytes.CompareTo(a.TotalBytes));
+                // 5. ソート設定に従ってプロセス行を並び替え
+                SortRows(rows);
 
                 // 6. ヘッダーおよびリストの差分更新
                 UpdateHeader(rows, totalDedicated, maxDedicated, isNvmlActive);
@@ -422,6 +475,51 @@ namespace VramMonitor.Forms
                 if (_totalLabel.Text != ex.Message)
                     _totalLabel.Text = ex.Message;
             }
+        }
+
+        private void SortRows(List<ProcessRow> rows)
+        {
+            rows.Sort((a, b) =>
+            {
+                int cmp = 0;
+                switch (_sortColumn)
+                {
+                    case 0: // PID
+                        cmp = a.Pid.CompareTo(b.Pid);
+                        break;
+                    case 1: // プロセス名
+                        string nameA = a.IsSystem ? "システム/カーネル (ドライバ・その他)" : _collector.GetProcessName(a.Pid);
+                        string nameB = b.IsSystem ? "システム/カーネル (ドライバ・その他)" : _collector.GetProcessName(b.Pid);
+                        cmp = string.Compare(nameA, nameB, StringComparison.CurrentCultureIgnoreCase);
+                        break;
+                    case 2: // 専用 VRAM
+                        cmp = a.LocalBytes.CompareTo(b.LocalBytes);
+                        break;
+                    case 3: // 共有 VRAM
+                        cmp = a.NonLocalBytes.CompareTo(b.NonLocalBytes);
+                        break;
+                    default:
+                        cmp = a.TotalBytes.CompareTo(b.TotalBytes);
+                        break;
+                }
+
+                if (_sortOrder == SortOrder.Descending)
+                {
+                    cmp = -cmp;
+                }
+
+                // タイブレーク（同値の場合の安定順序）
+                if (cmp == 0)
+                {
+                    cmp = b.TotalBytes.CompareTo(a.TotalBytes);
+                    if (cmp == 0)
+                    {
+                        cmp = a.Pid.CompareTo(b.Pid);
+                    }
+                }
+
+                return cmp;
+            });
         }
 
         private void UpdateListViewRows(List<ProcessRow> rows)

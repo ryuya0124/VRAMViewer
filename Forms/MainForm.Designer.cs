@@ -132,6 +132,7 @@ namespace VramMonitor.Forms
             _listView.Columns.Add("プロセス名", 330);
             _listView.Columns.Add("専用 VRAM",  150, HorizontalAlignment.Right);
             _listView.Columns.Add("共有 VRAM",  150, HorizontalAlignment.Right);
+            _listView.ColumnClick      += OnListViewColumnClick;
             _listView.DrawColumnHeader += OnListViewDrawColumnHeader;
             _listView.DrawItem         += OnListViewDrawItem;
             _listView.DrawSubItem      += OnListViewDrawSubItem;
