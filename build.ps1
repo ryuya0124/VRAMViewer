@@ -36,11 +36,14 @@ $publishArgs = @(
     "--self-contained", $SelfContainedStr,
     "-p:PublishSingleFile=true",
     "-p:IncludeNativeLibrariesForSelfExtract=true",
-    "-p:EnableCompressionInSingleFile=true",
     "-p:DebugType=None",
     "-p:DebugSymbols=false",
     "-o", $OutputDir
 )
+
+if ($SelfContained) {
+    $publishArgs += "-p:EnableCompressionInSingleFile=true"
+}
 
 Write-Host "Running dotnet $($publishArgs -join ' ')..." -ForegroundColor Gray
 & dotnet @publishArgs

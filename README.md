@@ -1,87 +1,125 @@
 # VRAM Monitor (C# / WinForms)
 
-タスクマネージャーの「専用GPUメモリ」と**同じ情報源(NVML)**からプロセス別
-VRAM使用量を取得するWindowsデスクトップアプリです。
+Windows上でプロセスごとのGPUメモリ（専用VRAM / 共有メモリ）使用量をリアルタイムに可視化・監視するデスクトップアプリです。
 
-## なぜ一致するのか
+> [!NOTE]
+> **※ 個人利用（自分用）ツールです。**
+> 動作確認は **AMD Ryzen 7 9800X3D + NVIDIA GeForce RTX 5080 (Windows 11)** の環境でのみ行っています。他の構成での完全な動作は保証していません。
 
-Windowsの `\GPU Process Memory(*)\Dedicated Usage` パフォーマンスカウンターは
-グラフィックスタック側の集計で、DWM合成の都合上、同じVRAM領域が複数プロセス分
-重複計上されることがあります。
+---
 
-本アプリはNVIDIAドライバが直接管理する **NVML (NVIDIA Management Library)**
-を P/Invoke 経由で直接叩きます。タスクマネージャーの表示も同じNVMLの情報を
-元にしているため、原理的に数値が一致します。NVMLはNVIDIA GPUしか扱わないため、
-AMD iGPUとの混同（LUID分離の手間）も発生しません。
+## 主な機能
+
+- **正確なGPU総メモリ使用量表示**:
+  - NVIDIA GPU選択時は **NVML (NVIDIA Management Library)** を直接参照し、タスクマネージャーのGPUパフォーマンス表示と一致する総VRAM使用量を表示
+- **プロセス別 VRAM 内訳表示**:
+  - Windows パフォーマンスカウンター（`GPU Process Memory`）から、各プロセスの**専用VRAM (Local)** および **共有メモリ (Non-Local)** を取得・リアルタイム集計
+  - アダプターごとの **LUID 照合** により、Ryzen内蔵iGPUとGeForceディスクリートGPUのメモリ使用量を分離
+- **システム / カーネル領域の可視化**:
+  - NVMLの総使用量とプロセス別使用量の合計との差分を「システム/カーネル（ドライバ等）」として算出・表示
+- **マルチGPU対応**:
+  - 接続されている GPU（NVIDIA / AMD / Intel）をドロップダウンから切り替え可能
+- **ダークモード対応**:
+  - Windows 10/11 のテーマ自動検出・動的追従 ＆ 手動切り替え（💻 自動 / 🌙 ダーク / ☀️ ライト）
+- **単一EXEビルド対応**:
+  - **ランタイム非同梱版**（超軽量 / 約200 KB）
+  - **ランタイム同梱版**（スタンドアロン / 約68 MB / .NET未インストールPCでも動作）
+
+---
+
+## 仕組みと設計
+
+1. **GPU総使用量（ヘッダー）**:
+   - NVIDIA GPU: `nvml.dll` の `nvmlDeviceGetMemoryInfo` から正確な物理VRAM使用量を取得
+   - iGPU / その他のGPU: DXGI (`IDXGIAdapter3`) およびパフォーマンスカウンターのプロセス集計値を使用
+2. **プロセス別内訳（一覧）**:
+   - `\GPU Process Memory(*)\Local Usage`（専用VRAM）および `Shared Usage`（共有）カウンターを集計
+   - DXGIアダプターのLUIDとパフォーマンスカウンターのインスタンス名をマッチングし、対象GPUのプロセスのみをフィルタリング
+3. **ドライバ・システム領域**:
+   - NVIDIA環境では、NVMLで得られる総使用量からプロセス別合計を引いた差分を「システム/カーネル」行として表示
+
+---
 
 ## 動作環境
 
-- Windows 10/11 (x64)
-- .NET 8 SDK（ビルド時のみ必要。実行だけなら発行済みexeで不要）
-- NVIDIAドライバがインストール済みで `nvml.dll` が解決できること
-  （通常 `C:\Program Files\NVIDIA Corporation\NVSMI` が自動でPATHに入っています）
+- **検証済み環境**: **AMD Ryzen 7 9800X3D + NVIDIA GeForce RTX 5080 (Windows 11 x64)**
+- **対応OS**: Windows 10 (1809以降) / Windows 11 (x64)
+- **ランタイム**:
+  - **ランタイム非同梱版 exe**: [.NET 8 デスクトップランタイム](https://dotnet.microsoft.com/download/dotnet/8.0) が必要
+  - **ランタイム同梱版 exe**: ランタイムインストール不要（単体で動作）
+  - **ソースコードからビルドする場合**: .NET 8 SDK が必要
+- **ドライバ**: NVIDIA ディスプレイドライバ（NVML連携用。なくてもDXGIフォールバックで動作）
+
+---
 
 ## ビルド方法
 
-1. [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) をインストール
-2. このフォルダ一式（`VramMonitor.csproj` と `.cs` ファイル）を任意の場所に置く
-3. コマンドプロンプト/PowerShellでフォルダに移動し、以下を実行
+用途に合わせて、3種類の方法でビルド・実行できます。
 
-```powershell
-dotnet build -c Release
-```
-
-初回はNuGetの復元が走ります（このプロジェクトは外部NuGetパッケージ不要ですが、
-SDK自体のワークロード解決のためネットワークが必要です）。
-
-## 実行
-
-```powershell
-dotnet run -c Release
-```
-
-または、ビルド後に生成される実行ファイルを直接起動:
-
-```
-bin\Release\net8.0-windows\VramMonitor.exe
-```
-
-## 単一exeのビルド (配布用)
-
-付属のビルドスクリプトを実行すると、単一のスタンドアロン `.exe` ファイルが生成されます（.NET ランタイム同梱のため、他のPCでもそのまま実行可能です）。
+### 1. ランタイム非同梱版（軽量 単一EXE / 約200 KB）★おすすめ
+実行環境に [.NET 8 デスクトップランタイム](https://dotnet.microsoft.com/download/dotnet/8.0) が入っているPC向けの超軽量な単一exeです。
 
 - **バッチファイル（ダブルクリックで実行）**:
-  - `build.bat` を実行
+  - `build-light.bat`
 - **PowerShell**:
-  - `.\build.ps1` を実行
+  ```powershell
+  .\build.ps1 -FrameworkDependent -OutputDir publish_light
+  ```
+- **CLI コマンド**:
+  ```powershell
+  dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o publish_light
+  ```
+- **生成ファイル**: `publish_light\VramMonitor.exe`
 
-出力先:
+---
+
+### 2. ランタイム同梱版（スタンドアロン 単一EXE / 約68 MB）
+.NET 8 ランタイムがインストールされていないPCでも、この単一exeファイルのみでそのまま動作します。
+
+- **バッチファイル（ダブルクリックで実行）**:
+  - `build.bat`
+- **PowerShell**:
+  ```powershell
+  .\build.ps1
+  ```
+- **CLI コマンド**:
+  ```powershell
+  dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o publish
+  ```
+- **生成ファイル**: `publish\VramMonitor.exe`
+
+---
+
+### 3. 開発用ビルド・デバッグ実行
+
+```powershell
+# ビルド
+dotnet build -c Release
+
+# 実行
+dotnet run -c Release
 ```
-publish\VramMonitor.exe
-```
+（生成先: `bin\Release\net8.0-windows\VramMonitor.exe`）
+
+---
 
 ## 画面の見方
 
-- 上部: GPU名、専用GPUメモリ使用量（GB・%）、プログレスバー
-  → ここがタスクマネージャーの「専用GPUメモリ」と一致するはずです
-- 一覧: プロセスごとのVRAM使用量（MB単位、降順）
-  - 種別列: `Compute`(CUDA等) / `Graphics`(描画) / 両方使っていれば`Compute+Graphics`
-- 1.5秒ごとに自動更新
+- **ヘッダー**:
+  - GPU名とテーマ切り替えボタン（💻 自動 / 🌙 ダーク / ☀️ ライト）
+  - GPU選択ドロップダウン
+  - 専用 / 共有 VRAM 使用量（GB・%）
+  - VRAM 使用率ゲージ（プログレスバー）
+- **プロセス一覧**:
+  - PID、プロセス名、専用 VRAM、共有 VRAM
+  - システム/カーネル行: NVML総使用量とプロセス合計の差分（ドライバ・DWM等）
+- **1.5秒ごとに自動更新**
 
-## Visual Studioで開く場合
-
-`VramMonitor.csproj` をダブルクリックするか、Visual Studio 2022以降で
-「フォルダーを開く」→ このフォルダを選択すればそのまま認識されます。
-デバッグ実行はF5でOKです。
+---
 
 ## トラブルシューティング
 
-- 起動時に「nvml.dll が見つかりません」と出る場合:
-  NVIDIAドライバの再インストール、または
-  `C:\Program Files\NVIDIA Corporation\NVSMI` が存在するか確認してください。
-- 「NVMLの初期化に失敗しました」と出る場合: ドライバのバージョンが古い可能性があります。
-  最新のGeForceドライバに更新してください。
-- ビルド時に `net8.0-windows` が見つからないエラーが出る場合: .NET 8 SDKの
-  Windows Desktop向けコンポーネントが入っていない可能性があります。SDKインストーラを
-  再実行し、"ASP.NET と Web開発" ではなく通常のSDKインストールを選んでください
-  （WinFormsは.NET SDK標準に含まれます）。
+- **「⚠️ nvml.dll が見つかりません」と出る場合**:
+  NVIDIAドライバが未インストールまたは標準パスに見つからない場合です。DXGIフォールバックモードで動作します。
+- **「⚠️ NVML 初期化エラー」と出る場合**:
+  最新の GeForce / Studio ドライバに更新してください。
