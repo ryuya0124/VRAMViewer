@@ -13,7 +13,7 @@ namespace VramMonitor.Forms
         private ComboBox          _gpuSelector = null!;
         private Label             _totalLabel = null!;
         private ModernProgressBar _progressBar = null!;
-        private ListView          _listView = null!;
+        private DoubleBufferedListView _listView = null!;
         private Label             _updatedLabel = null!;
         private Panel             _bannerPanel = null!;
         private Label             _bannerLabel = null!;
@@ -119,7 +119,7 @@ namespace VramMonitor.Forms
             _headerPanel.Controls.Add(topRowPanel);
 
             // ---- Process list ----
-            _listView = new ListView
+            _listView = new DoubleBufferedListView
             {
                 Dock          = DockStyle.Fill,
                 View          = View.Details,

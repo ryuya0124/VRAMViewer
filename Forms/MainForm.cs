@@ -34,6 +34,12 @@ namespace VramMonitor.Forms
         {
             InitializeComponent();
 
+            DoubleBuffered = true;
+            SetStyle(
+                ControlStyles.OptimizedDoubleBuffer |
+                ControlStyles.AllPaintingInWmPaint,
+                true);
+
             _timer = new System.Windows.Forms.Timer { Interval = RefreshIntervalMs };
             _timer.Tick += (_, _) => RefreshData();
 
@@ -354,38 +360,129 @@ namespace VramMonitor.Forms
                     }
                 }
 
-                _listView.BeginUpdate();
-                _listView.Items.Clear();
+                UpdateListViewRows(rows);
 
-                Color systemColor = _isDarkMode ? ThemeManager.Dark.SystemRowText : ThemeManager.Light.SystemRowText;
-
-                foreach (var row in rows)
+                string updatedText = $"最終更新: {DateTime.Now:HH:mm:ss}";
+                if (_updatedLabel.Text != updatedText)
                 {
-                    string pidText = row.IsSystem ? "-" : row.Pid.ToString();
-                    string name    = row.IsSystem
-                        ? "システム/カーネル (ドライバ・その他)"
-                        : _collector.GetProcessName(row.Pid);
-
-                    var item = new ListViewItem(new[]
-                    {
-                        pidText,
-                        name,
-                        FormatHelper.FormatVram(row.LocalBytes),
-                        FormatHelper.FormatVram(row.NonLocalBytes),
-                    });
-
-                    if (row.IsSystem)
-                        item.ForeColor = systemColor;
-
-                    _listView.Items.Add(item);
+                    _updatedLabel.Text = updatedText;
                 }
-
-                _listView.EndUpdate();
-                _updatedLabel.Text = $"最終更新: {DateTime.Now:HH:mm:ss}";
             }
             catch (NvmlException ex)
             {
-                _totalLabel.Text = ex.Message;
+                if (_totalLabel.Text != ex.Message)
+                    _totalLabel.Text = ex.Message;
+            }
+        }
+
+        private void UpdateListViewRows(List<ProcessRow> rows)
+        {
+            Color systemColor = _isDarkMode ? ThemeManager.Dark.SystemRowText : ThemeManager.Light.SystemRowText;
+            Color defaultColor = _isDarkMode ? ThemeManager.Dark.ListText : ThemeManager.Light.ListText;
+
+            // 既存アイテムを Tag (キー) でマップ化
+            var existingItems = new Dictionary<string, ListViewItem>(_listView.Items.Count);
+            foreach (ListViewItem item in _listView.Items)
+            {
+                if (item.Tag is string key)
+                {
+                    existingItems[key] = item;
+                }
+            }
+
+            var targetKeys = new HashSet<string>(rows.Count);
+            foreach (var r in rows)
+            {
+                targetKeys.Add(r.IsSystem ? "SYSTEM" : r.Pid.ToString());
+            }
+
+            bool structureChanged = false;
+
+            // 1. 存在しなくなった行を削除 (後ろから走査)
+            for (int i = _listView.Items.Count - 1; i >= 0; i--)
+            {
+                var item = _listView.Items[i];
+                if (item.Tag is string key && !targetKeys.Contains(key))
+                {
+                    if (!structureChanged)
+                    {
+                        _listView.BeginUpdate();
+                        structureChanged = true;
+                    }
+                    _listView.Items.RemoveAt(i);
+                    existingItems.Remove(key);
+                }
+            }
+
+            // 2. 順序の調整およびセル単位の部分差分更新
+            for (int i = 0; i < rows.Count; i++)
+            {
+                var row = rows[i];
+                string key = row.IsSystem ? "SYSTEM" : row.Pid.ToString();
+                string pidText = row.IsSystem ? "-" : row.Pid.ToString();
+                string name = row.IsSystem
+                    ? "システム/カーネル (ドライバ・その他)"
+                    : _collector.GetProcessName(row.Pid);
+                string dedicated = FormatHelper.FormatVram(row.LocalBytes);
+                string shared = FormatHelper.FormatVram(row.NonLocalBytes);
+                Color rowColor = row.IsSystem ? systemColor : defaultColor;
+
+                if (i < _listView.Items.Count && (string?)_listView.Items[i].Tag == key)
+                {
+                    // 同じ位置にある既存行 -> テキストが変わったセルのみ部分更新
+                    var item = _listView.Items[i];
+                    UpdateSubItem(item, 0, pidText);
+                    UpdateSubItem(item, 1, name);
+                    UpdateSubItem(item, 2, dedicated);
+                    UpdateSubItem(item, 3, shared);
+                    if (item.ForeColor != rowColor) item.ForeColor = rowColor;
+                }
+                else
+                {
+                    // 位置が変わった、または新規行
+                    if (!structureChanged)
+                    {
+                        _listView.BeginUpdate();
+                        structureChanged = true;
+                    }
+
+                    if (existingItems.TryGetValue(key, out var existingItem))
+                    {
+                        _listView.Items.Remove(existingItem);
+                        UpdateSubItem(existingItem, 0, pidText);
+                        UpdateSubItem(existingItem, 1, name);
+                        UpdateSubItem(existingItem, 2, dedicated);
+                        UpdateSubItem(existingItem, 3, shared);
+                        if (existingItem.ForeColor != rowColor) existingItem.ForeColor = rowColor;
+                        _listView.Items.Insert(i, existingItem);
+                    }
+                    else
+                    {
+                        var newItem = new ListViewItem(new[] { pidText, name, dedicated, shared })
+                        {
+                            Tag = key,
+                            ForeColor = rowColor
+                        };
+                        _listView.Items.Insert(i, newItem);
+                        existingItems[key] = newItem;
+                    }
+                }
+            }
+
+            if (structureChanged)
+            {
+                _listView.EndUpdate();
+            }
+        }
+
+        private static void UpdateSubItem(ListViewItem item, int index, string text)
+        {
+            if (index < item.SubItems.Count)
+            {
+                if (item.SubItems[index].Text != text)
+                {
+                    item.SubItems[index].Text = text;
+                }
             }
         }
 
@@ -393,7 +490,8 @@ namespace VramMonitor.Forms
         {
             if (_selectedAdapter == null) return;
 
-            _gpuNameLabel.Text = _selectedAdapter.Name;
+            if (_gpuNameLabel.Text != _selectedAdapter.Name)
+                _gpuNameLabel.Text = _selectedAdapter.Name;
 
             if (_selectedAdapter.IsNvidia && _nvmlReady)
             {
@@ -418,7 +516,8 @@ namespace VramMonitor.Forms
                         shared = $"  共有: {sharedUsedGb:0.00} GB / {sharedTotalGb:0.00} GB";
                     }
 
-                    _totalLabel.Text = $"専用: {usedGb:0.00} GB / {totalGb:0.00} GB ({pct:0}%){shared}  ※ NVML";
+                    string text = $"専用: {usedGb:0.00} GB / {totalGb:0.00} GB ({pct:0}%){shared}  ※ NVML";
+                    if (_totalLabel.Text != text) _totalLabel.Text = text;
                     _progressBar.Value = FormatHelper.ClampPercent(pct);
                     return;
                 }
@@ -457,12 +556,14 @@ namespace VramMonitor.Forms
                     shared = $"  共有: {sharedUsedGb:0.00} GB / {sharedTotalGb:0.00} GB";
                 }
 
-                _totalLabel.Text = $"専用: {usedGb:0.00} GB / {totalGb:0.00} GB ({pct:0}%){shared}";
+                string text = $"専用: {usedGb:0.00} GB / {totalGb:0.00} GB ({pct:0}%){shared}";
+                if (_totalLabel.Text != text) _totalLabel.Text = text;
                 _progressBar.Value = FormatHelper.ClampPercent(pct);
             }
             else
             {
-                _totalLabel.Text   = "GPU メモリ情報を取得できません";
+                if (_totalLabel.Text != "GPU メモリ情報を取得できません")
+                    _totalLabel.Text = "GPU メモリ情報を取得できません";
                 _progressBar.Value = 0;
             }
         }
