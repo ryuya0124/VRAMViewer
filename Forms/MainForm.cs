@@ -28,7 +28,6 @@ namespace VramMonitor.Forms
         private string            _nvmlStatusMessage = "";
         private List<AdapterInfo> _adapters = new();
         private AdapterInfo?      _selectedAdapter;
-        private ulong             _lastNvmlUsed;
 
         public MainForm()
         {
@@ -328,6 +327,15 @@ namespace VramMonitor.Forms
         private void OnGpuSelected(object? sender, EventArgs e)
         {
             _selectedAdapter = _gpuSelector.SelectedItem as AdapterInfo;
+            if (_selectedAdapter != null && _selectedAdapter.IsNvidia && _nvmlReady)
+            {
+                _device = Nvml.GetDeviceHandleForAdapter(_selectedAdapter);
+            }
+            else
+            {
+                _device = IntPtr.Zero;
+            }
+
             _collector.ClearCache();
             UpdateBannerStatus();
             RefreshData();
@@ -344,22 +352,63 @@ namespace VramMonitor.Forms
             try
             {
                 var rows = GpuProcessCollector.CollectProcesses(_selectedAdapter);
-                UpdateHeader(rows);
 
-                ulong totalUsed = GetTotalUsedBytes();
-                if (totalUsed > 0)
+                ulong totalDedicated = 0;
+                ulong maxDedicated = _selectedAdapter.DedicatedVideoMemory > 0
+                    ? _selectedAdapter.DedicatedVideoMemory
+                    : _selectedAdapter.SharedSystemMemory;
+
+                bool isNvmlActive = false;
+
+                // 1. NVIDIA + NVML から総専用VRAM使用量を正確に取得
+                if (_selectedAdapter.IsNvidia && _nvmlReady && _device != IntPtr.Zero)
                 {
-                    ulong processSum = 0;
-                    foreach (var r in rows) processSum += r.LocalBytes;
-
-                    if (totalUsed > processSum)
+                    if (Nvml.DeviceGetMemoryInfo(_device, out var mem) == Nvml.NvmlReturn.Success)
                     {
-                        ulong sysVram = totalUsed - processSum;
-                        if (sysVram > 512 * 1024)
-                            rows.Add(new ProcessRow(0, sysVram, 0, isSystem: true));
+                        totalDedicated = mem.Used;
+                        if (mem.Total > 0) maxDedicated = mem.Total;
+                        isNvmlActive = true;
                     }
                 }
 
+                // 2. NVML が利用できない場合は DXGI から総専用使用量を取得
+                if (!isNvmlActive)
+                {
+                    var seg = DxgiHelper.QueryVideoMemory(_selectedAdapter.LuidLow, _selectedAdapter.LuidHigh, 0);
+                    if (seg.HasValue && seg.Value.CurrentUsage > 0)
+                    {
+                        totalDedicated = seg.Value.CurrentUsage;
+                        if (seg.Value.Budget > 0) maxDedicated = seg.Value.Budget;
+                    }
+                }
+
+                // 3. 各プロセスの専用VRAM合計を算出
+                ulong processDedicatedSum = 0;
+                foreach (var r in rows)
+                {
+                    processDedicatedSum += r.LocalBytes;
+                }
+
+                // 4. ドライバ・システム/カーネル予約領域 (差分) を算出
+                if (totalDedicated > processDedicatedSum)
+                {
+                    ulong sysDedicated = totalDedicated - processDedicatedSum;
+                    if (sysDedicated > 0)
+                    {
+                        rows.Add(new ProcessRow(0, sysDedicated, 0, isSystem: true));
+                    }
+                }
+                else if (totalDedicated == 0)
+                {
+                    // 総使用量が直接取得できない場合はプロセス合計を総使用量とする
+                    totalDedicated = processDedicatedSum;
+                }
+
+                // 5. システム行も含めて全体を使用量 (TotalBytes) 降順でソート
+                rows.Sort((a, b) => b.TotalBytes.CompareTo(a.TotalBytes));
+
+                // 6. ヘッダーおよびリストの差分更新
+                UpdateHeader(rows, totalDedicated, maxDedicated, isNvmlActive);
                 UpdateListViewRows(rows);
 
                 string updatedText = $"最終更新: {DateTime.Now:HH:mm:ss}";
@@ -486,94 +535,39 @@ namespace VramMonitor.Forms
             }
         }
 
-        private void UpdateHeader(List<ProcessRow> rows)
+        private void UpdateHeader(List<ProcessRow> rows, ulong totalDedicatedUsed, ulong maxDedicatedBytes, bool isNvmlActive)
         {
             if (_selectedAdapter == null) return;
 
             if (_gpuNameLabel.Text != _selectedAdapter.Name)
                 _gpuNameLabel.Text = _selectedAdapter.Name;
 
-            if (_selectedAdapter.IsNvidia && _nvmlReady)
+            double usedGb  = totalDedicatedUsed / 1024.0 / 1024.0 / 1024.0;
+            double totalGb = maxDedicatedBytes  / 1024.0 / 1024.0 / 1024.0;
+            double pct     = maxDedicatedBytes > 0 ? (double)totalDedicatedUsed / maxDedicatedBytes * 100.0 : 0.0;
+
+            string shared = "";
+            if (_selectedAdapter.SharedSystemMemory > 0)
             {
-                var r = Nvml.DeviceGetMemoryInfo(_device, out var mem);
-                if (r == Nvml.NvmlReturn.Success)
+                ulong sharedSum = 0;
+                foreach (var row in rows)
                 {
-                    double usedGb  = mem.Used  / 1024.0 / 1024.0 / 1024.0;
-                    double totalGb = mem.Total / 1024.0 / 1024.0 / 1024.0;
-                    double pct     = mem.Total > 0 ? (double)mem.Used / mem.Total * 100.0 : 0.0;
-                    _lastNvmlUsed  = mem.Used;
-
-                    string shared = "";
-                    if (_selectedAdapter.SharedSystemMemory > 0)
-                    {
-                        ulong nvSharedSum = 0;
-                        foreach (var row in rows)
-                        {
-                            if (!row.IsSystem) nvSharedSum += row.NonLocalBytes;
-                        }
-                        double sharedUsedGb  = nvSharedSum / 1024.0 / 1024.0 / 1024.0;
-                        double sharedTotalGb = _selectedAdapter.SharedSystemMemory / 1024.0 / 1024.0 / 1024.0;
-                        shared = $"  共有: {sharedUsedGb:0.00} GB / {sharedTotalGb:0.00} GB";
-                    }
-
-                    string text = $"専用: {usedGb:0.00} GB / {totalGb:0.00} GB ({pct:0}%){shared}  ※ NVML";
-                    if (_totalLabel.Text != text) _totalLabel.Text = text;
-                    _progressBar.Value = FormatHelper.ClampPercent(pct);
-                    return;
+                    if (!row.IsSystem) sharedSum += row.NonLocalBytes;
                 }
+                double sharedUsedGb  = sharedSum / 1024.0 / 1024.0 / 1024.0;
+                double sharedTotalGb = _selectedAdapter.SharedSystemMemory / 1024.0 / 1024.0 / 1024.0;
+                shared = $"  共有: {sharedUsedGb:0.00} GB / {sharedTotalGb:0.00} GB";
             }
 
-            _lastNvmlUsed = 0;
+            string sourceTag = isNvmlActive ? "  ※ NVML" : "";
+            string headerText = maxDedicatedBytes > 0
+                ? $"専用: {usedGb:0.00} GB / {totalGb:0.00} GB ({pct:0}%){shared}{sourceTag}"
+                : "GPU メモリ情報を取得できません";
 
-            ulong processLocalSum = 0;
-            ulong processNonLocalSum = 0;
-            foreach (var row in rows)
-            {
-                if (!row.IsSystem)
-                {
-                    processLocalSum += row.LocalBytes;
-                    processNonLocalSum += row.NonLocalBytes;
-                }
-            }
+            if (_totalLabel.Text != headerText)
+                _totalLabel.Text = headerText;
 
-            ulong totalBytes = _selectedAdapter.DedicatedVideoMemory > 0
-                ? _selectedAdapter.DedicatedVideoMemory
-                : _selectedAdapter.SharedSystemMemory;
-
-            if (totalBytes > 0)
-            {
-                double usedGb  = processLocalSum / 1024.0 / 1024.0 / 1024.0;
-                double totalGb = totalBytes / 1024.0 / 1024.0 / 1024.0;
-                double pct     = totalBytes > 0
-                    ? (double)processLocalSum / totalBytes * 100.0
-                    : 0.0;
-
-                string shared = "";
-                if (_selectedAdapter.SharedSystemMemory > 0)
-                {
-                    double sharedUsedGb  = processNonLocalSum / 1024.0 / 1024.0 / 1024.0;
-                    double sharedTotalGb = _selectedAdapter.SharedSystemMemory / 1024.0 / 1024.0 / 1024.0;
-                    shared = $"  共有: {sharedUsedGb:0.00} GB / {sharedTotalGb:0.00} GB";
-                }
-
-                string text = $"専用: {usedGb:0.00} GB / {totalGb:0.00} GB ({pct:0}%){shared}";
-                if (_totalLabel.Text != text) _totalLabel.Text = text;
-                _progressBar.Value = FormatHelper.ClampPercent(pct);
-            }
-            else
-            {
-                if (_totalLabel.Text != "GPU メモリ情報を取得できません")
-                    _totalLabel.Text = "GPU メモリ情報を取得できません";
-                _progressBar.Value = 0;
-            }
-        }
-
-        private ulong GetTotalUsedBytes()
-        {
-            if (_selectedAdapter != null && _selectedAdapter.IsNvidia && _nvmlReady && _lastNvmlUsed > 0)
-                return _lastNvmlUsed;
-
-            return 0;
+            _progressBar.Value = maxDedicatedBytes > 0 ? FormatHelper.ClampPercent(pct) : 0;
         }
 
         // ----------------------------------------------------------------

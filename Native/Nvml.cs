@@ -232,6 +232,47 @@ namespace VramMonitor.Native
                     IntPtr.Zero);
             }
         }
+
+        /// <summary>
+        /// AdapterInfo に対応する NVML デバイスハンドルを取得する。
+        /// 複数 NVIDIA GPU が存在する場合は名前等でマッチングを試みる。
+        /// </summary>
+        public static IntPtr GetDeviceHandleForAdapter(AdapterInfo adapter)
+        {
+            if (!adapter.IsNvidia) return IntPtr.Zero;
+
+            try
+            {
+                if (DeviceGetCount(out uint count) == NvmlReturn.Success && count > 0)
+                {
+                    var sb = new StringBuilder(64);
+                    for (uint i = 0; i < count; i++)
+                    {
+                        if (DeviceGetHandleByIndex(i, out IntPtr dev) == NvmlReturn.Success && dev != IntPtr.Zero)
+                        {
+                            sb.Clear();
+                            if (DeviceGetName(dev, sb, (uint)sb.Capacity) == NvmlReturn.Success)
+                            {
+                                string devName = sb.ToString();
+                                if (!string.IsNullOrEmpty(devName) &&
+                                    (adapter.Name.Contains(devName, StringComparison.OrdinalIgnoreCase) ||
+                                     devName.Contains(adapter.Name, StringComparison.OrdinalIgnoreCase)))
+                                {
+                                    return dev;
+                                }
+                            }
+                        }
+                    }
+
+                    // 完全一致しない場合は最初のデバイスをフォールバック
+                    if (DeviceGetHandleByIndex(0, out IntPtr firstDev) == NvmlReturn.Success)
+                        return firstDev;
+                }
+            }
+            catch { }
+
+            return IntPtr.Zero;
+        }
     }
 
     internal sealed class NvmlException : Exception

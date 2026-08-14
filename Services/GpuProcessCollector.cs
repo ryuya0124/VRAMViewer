@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
 using VramMonitor.Models;
 using VramMonitor.Native;
 
@@ -10,6 +13,17 @@ namespace VramMonitor.Services
     {
         private readonly Dictionary<uint, string> _processNameCache = new();
 
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr OpenProcess(uint processAccess, bool bInheritHandle, int processId);
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern bool QueryFullProcessImageName(IntPtr hProcess, int flags, StringBuilder lpExeName, ref int lpdwSize);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool CloseHandle(IntPtr hObject);
+
+        private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
         public void ClearCache()
         {
             _processNameCache.Clear();
@@ -17,6 +31,9 @@ namespace VramMonitor.Services
 
         public string GetProcessName(uint pid)
         {
+            if (pid == 0) return "System Idle";
+            if (pid == 4) return "System (NT Kernel)";
+
             if (_processNameCache.TryGetValue(pid, out var cached))
                 return cached;
 
@@ -26,11 +43,35 @@ namespace VramMonitor.Services
                 using var p = Process.GetProcessById((int)pid);
                 name = p.ProcessName;
             }
-            catch (ArgumentException)         { name = $"(PID {pid})"; }
-            catch (InvalidOperationException) { name = $"(PID {pid})"; }
+            catch
+            {
+                name = GetProcessNameLowLevel(pid);
+            }
 
             _processNameCache[pid] = name;
             return name;
+        }
+
+        private static string GetProcessNameLowLevel(uint pid)
+        {
+            IntPtr handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, (int)pid);
+            if (handle != IntPtr.Zero)
+            {
+                try
+                {
+                    var sb = new StringBuilder(1024);
+                    int size = sb.Capacity;
+                    if (QueryFullProcessImageName(handle, 0, sb, ref size))
+                    {
+                        return Path.GetFileNameWithoutExtension(sb.ToString());
+                    }
+                }
+                finally
+                {
+                    CloseHandle(handle);
+                }
+            }
+            return $"(PID {pid})";
         }
 
         /// <summary>
