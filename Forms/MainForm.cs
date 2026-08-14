@@ -466,9 +466,39 @@ namespace VramMonitor.Forms
                 _                          => TextFormatFlags.Left
             };
 
-            // パディング（左右にマージンを持たせて描画）
-            var textRect = new Rectangle(e.Bounds.X + 6, e.Bounds.Y, Math.Max(0, e.Bounds.Width - 12), e.Bounds.Height);
-            TextRenderer.DrawText(e.Graphics, e.SubItem?.Text ?? "", e.SubItem?.Font ?? e.Item.Font, textRect, fgColor, flags);
+            // パディングおよびアイコン描画
+            if (e.ColumnIndex == 1) // プロセス名列
+            {
+                uint pid = 0;
+                if (!isSystem && e.Item.Tag is string pidStr)
+                {
+                    uint.TryParse(pidStr, out pid);
+                }
+
+                var icon = _collector.GetProcessIcon(pid, isSystem);
+                int iconSize = 16;
+                int iconX = e.Bounds.X + 6;
+                int iconY = e.Bounds.Y + (e.Bounds.Height - iconSize) / 2;
+
+                if (icon != null)
+                {
+                    e.Graphics.DrawImage(icon, iconX, iconY, iconSize, iconSize);
+                }
+
+                int textOffset = iconSize + 6;
+                var textRect = new Rectangle(
+                    e.Bounds.X + 6 + textOffset,
+                    e.Bounds.Y,
+                    Math.Max(0, e.Bounds.Width - 12 - textOffset),
+                    e.Bounds.Height);
+
+                TextRenderer.DrawText(e.Graphics, e.SubItem?.Text ?? "", e.SubItem?.Font ?? e.Item.Font, textRect, fgColor, flags);
+            }
+            else
+            {
+                var textRect = new Rectangle(e.Bounds.X + 6, e.Bounds.Y, Math.Max(0, e.Bounds.Width - 12), e.Bounds.Height);
+                TextRenderer.DrawText(e.Graphics, e.SubItem?.Text ?? "", e.SubItem?.Font ?? e.Item.Font, textRect, fgColor, flags);
+            }
         }
 
         private void OnListViewResize(object? sender, EventArgs e)
@@ -902,6 +932,7 @@ namespace VramMonitor.Forms
         {
             I18n.LanguageChanged -= OnLanguageChanged;
             _timer.Stop();
+            _collector.IconService.Dispose();
             if (_nvmlReady)
             {
                 try { Nvml.Shutdown(); }

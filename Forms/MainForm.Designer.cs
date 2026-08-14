@@ -41,6 +41,7 @@ namespace VramMonitor.Forms
         private Label             _totalLabel = null!;
         private ModernProgressBar _progressBar = null!;
         private DoubleBufferedListView _listView = null!;
+        private ImageList         _imageList = null!;
         private ColumnHeader      _colPid = null!;
         private ColumnHeader      _colName = null!;
         private ColumnHeader      _colDedicated = null!;
@@ -216,14 +217,21 @@ namespace VramMonitor.Forms
             _headerPanel.Controls.Add(topRowPanel);
 
             // ---- Process list ----
+            _imageList = new ImageList
+            {
+                ImageSize = new Size(16, 16),
+                ColorDepth = ColorDepth.Depth32Bit
+            };
+
             _listView = new DoubleBufferedListView
             {
-                Dock          = DockStyle.Fill,
-                View          = View.Details,
-                FullRowSelect = true,
-                GridLines     = true,
-                BorderStyle   = BorderStyle.None,
-                OwnerDraw     = true,
+                Dock           = DockStyle.Fill,
+                View           = View.Details,
+                FullRowSelect  = true,
+                GridLines      = true,
+                BorderStyle    = BorderStyle.None,
+                OwnerDraw      = true,
+                SmallImageList = _imageList,
             };
             _colPid       = new ColumnHeader { Text = "PID", Width = 70 };
             _colName      = new ColumnHeader { Text = "Process Name", Width = 330 };

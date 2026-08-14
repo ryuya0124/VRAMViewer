@@ -12,6 +12,7 @@ namespace VramMonitor.Services
     public sealed class GpuProcessCollector
     {
         private readonly Dictionary<uint, string> _processNameCache = new();
+        public ProcessIconService IconService { get; } = new();
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern IntPtr OpenProcess(uint processAccess, bool bInheritHandle, int processId);
@@ -27,6 +28,12 @@ namespace VramMonitor.Services
         public void ClearCache()
         {
             _processNameCache.Clear();
+            IconService.ClearCache();
+        }
+
+        public Image GetProcessIcon(uint pid, bool isSystem)
+        {
+            return IconService.GetProcessIcon(pid, isSystem);
         }
 
         public string GetProcessName(uint pid)
