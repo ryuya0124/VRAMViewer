@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.Linq;
-using System.Text;
 using System.Windows.Forms;
 
 namespace VramMonitor
@@ -10,44 +10,51 @@ namespace VramMonitor
     public sealed class MainForm : Form
     {
         private const int RefreshIntervalMs = 1500;
+        private const int WM_SETTINGCHANGE  = 0x001A;
+        private const int WM_THEMECHANGED   = 0x031A;
 
         // --- Controls ---
-        private readonly Label       _gpuNameLabel;
-        private readonly ComboBox    _gpuSelector;
-        private readonly Label       _totalLabel;
-        private readonly ProgressBar _progressBar;
-        private readonly ListView    _listView;
-        private readonly Label       _updatedLabel;
+        private readonly Panel             _headerPanel;
+        private readonly Panel             _listPanel;
+        private readonly Label             _gpuNameLabel;
+        private readonly Button            _themeButton;
+        private readonly ComboBox          _gpuSelector;
+        private readonly Label             _totalLabel;
+        private readonly ModernProgressBar _progressBar;
+        private readonly ListView          _listView;
+        private readonly Label             _updatedLabel;
         private readonly System.Windows.Forms.Timer _timer;
+        private readonly Panel             _bannerPanel;
+        private readonly Label             _bannerLabel;
+
+        // --- Theme State ---
+        private AppTheme _themeMode = AppTheme.Auto;
+        private bool     _isDarkMode;
 
         // --- State ---
-        private IntPtr        _device;
-        private bool          _nvmlReady;
-        private NvmlStatus    _nvmlStatus = NvmlStatus.NotAttempted;
-        private string        _nvmlStatusMessage = "";
+        private IntPtr            _device;
+        private bool              _nvmlReady;
+        private NvmlStatus        _nvmlStatus = NvmlStatus.NotAttempted;
+        private string            _nvmlStatusMessage = "";
         private List<AdapterInfo> _adapters = new();
-        private AdapterInfo?  _selectedAdapter;
-        private ulong         _lastNvmlUsed;
-
-        private readonly Panel       _bannerPanel;
-        private readonly Label       _bannerLabel;
+        private AdapterInfo?      _selectedAdapter;
+        private ulong             _lastNvmlUsed;
         private readonly Dictionary<uint, string> _processNameCache = new();
 
         public MainForm()
         {
             Text            = "VRAM Monitor";
-            Width           = 760;
-            Height          = 580;
-            MinimumSize     = new System.Drawing.Size(560, 400);
+            Width           = 780;
+            Height          = 600;
+            MinimumSize     = new Size(580, 420);
             StartPosition   = FormStartPosition.CenterScreen;
-            Font            = new System.Drawing.Font("Segoe UI", 9F);
+            Font            = new Font("Segoe UI", 9F);
 
             // ---- Banner panel (Warning / Status) ----
             _bannerPanel = new Panel
             {
                 Dock      = DockStyle.Top,
                 Height    = 30,
-                BackColor = System.Drawing.Color.FromArgb(255, 243, 205),
                 Padding   = new Padding(12, 6, 12, 6),
                 Visible   = false,
                 Cursor    = Cursors.Hand,
@@ -55,8 +62,7 @@ namespace VramMonitor
             _bannerLabel = new Label
             {
                 Dock      = DockStyle.Fill,
-                ForeColor = System.Drawing.Color.FromArgb(133, 100, 4),
-                Font      = new System.Drawing.Font("Segoe UI", 8.5F, System.Drawing.FontStyle.Regular),
+                Font      = new Font("Segoe UI", 8.5F, FontStyle.Regular),
                 Text      = "",
                 Cursor    = Cursors.Hand,
             };
@@ -65,28 +71,53 @@ namespace VramMonitor
             _bannerLabel.Click += OnBannerClick;
 
             // ---- Header panel ----
-            var headerPanel = new Panel
+            _headerPanel = new Panel
             {
                 Dock    = DockStyle.Top,
-                Height  = 118,
-                Padding = new Padding(12, 10, 12, 4),
+                Height  = 120,
+                Padding = new Padding(12, 10, 12, 6),
             };
+
+            // Top row container inside header: GPU Name (left) & Theme Toggle Button (right)
+            var topRowPanel = new Panel
+            {
+                Dock   = DockStyle.Top,
+                Height = 28,
+            };
+
+            _themeButton = new Button
+            {
+                Dock      = DockStyle.Right,
+                Width     = 84,
+                Height    = 26,
+                FlatStyle = FlatStyle.Flat,
+                Font      = new Font("Segoe UI", 8F),
+                Cursor    = Cursors.Hand,
+            };
+            _themeButton.FlatAppearance.BorderSize = 1;
+            _themeButton.Click += OnThemeButtonClick;
 
             _gpuNameLabel = new Label
             {
-                Text      = "初期化中...",
-                Font      = new System.Drawing.Font("Segoe UI", 12F, System.Drawing.FontStyle.Bold),
-                AutoSize  = false,
-                Dock      = DockStyle.Top,
-                Height    = 26,
+                Text     = "初期化中...",
+                Font     = new Font("Segoe UI", 11.5F, FontStyle.Bold),
+                Dock     = DockStyle.Fill,
+                AutoSize = false,
             };
+
+            topRowPanel.Controls.Add(_gpuNameLabel);
+            topRowPanel.Controls.Add(_themeButton);
 
             _gpuSelector = new ComboBox
             {
                 Dock          = DockStyle.Top,
                 DropDownStyle = ComboBoxStyle.DropDownList,
-                Height        = 24,
+                DrawMode      = DrawMode.OwnerDrawFixed,
+                ItemHeight    = 20,
+                Height        = 26,
+                FlatStyle     = FlatStyle.Flat,
             };
+            _gpuSelector.DrawItem += OnGpuSelectorDrawItem;
 
             _totalLabel = new Label
             {
@@ -95,7 +126,7 @@ namespace VramMonitor
                 Height = 22,
             };
 
-            _progressBar = new ProgressBar
+            _progressBar = new ModernProgressBar
             {
                 Dock    = DockStyle.Top,
                 Height  = 18,
@@ -104,10 +135,10 @@ namespace VramMonitor
             };
 
             // Controls added bottom-to-top (DockStyle.Top stacks in reverse insertion order)
-            headerPanel.Controls.Add(_progressBar);
-            headerPanel.Controls.Add(_totalLabel);
-            headerPanel.Controls.Add(_gpuSelector);
-            headerPanel.Controls.Add(_gpuNameLabel);
+            _headerPanel.Controls.Add(_progressBar);
+            _headerPanel.Controls.Add(_totalLabel);
+            _headerPanel.Controls.Add(_gpuSelector);
+            _headerPanel.Controls.Add(topRowPanel);
 
             // ---- Process list ----
             _listView = new ListView
@@ -116,36 +147,180 @@ namespace VramMonitor
                 View          = View.Details,
                 FullRowSelect = true,
                 GridLines     = true,
-                Margin        = new Padding(12),
+                BorderStyle   = BorderStyle.None,
             };
             _listView.Columns.Add("PID",       70);
-            _listView.Columns.Add("プロセス名", 260);
+            _listView.Columns.Add("プロセス名", 270);
             _listView.Columns.Add("専用 VRAM",  145, HorizontalAlignment.Right);
             _listView.Columns.Add("共有 VRAM",  145, HorizontalAlignment.Right);
 
-            var listPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12, 0, 12, 0) };
-            listPanel.Controls.Add(_listView);
+            _listPanel = new Panel
+            {
+                Dock    = DockStyle.Fill,
+                Padding = new Padding(12, 0, 12, 0)
+            };
+            _listPanel.Controls.Add(_listView);
 
             _updatedLabel = new Label
             {
-                Text      = "",
-                Dock      = DockStyle.Bottom,
-                Height    = 24,
-                Padding   = new Padding(12, 0, 0, 6),
-                ForeColor = System.Drawing.Color.Gray,
-                Font      = new System.Drawing.Font("Segoe UI", 8F),
+                Text    = "",
+                Dock    = DockStyle.Bottom,
+                Height  = 24,
+                Padding = new Padding(12, 0, 0, 6),
+                Font    = new Font("Segoe UI", 8F),
             };
 
-            Controls.Add(listPanel);
+            Controls.Add(_listPanel);
             Controls.Add(_updatedLabel);
             Controls.Add(_bannerPanel);
-            Controls.Add(headerPanel);
+            Controls.Add(_headerPanel);
 
             _timer = new System.Windows.Forms.Timer { Interval = RefreshIntervalMs };
             _timer.Tick += (_, _) => RefreshData();
 
-            Load         += OnLoad;
-            FormClosing  += OnFormClosing;
+            Load        += OnLoad;
+            FormClosing += OnFormClosing;
+        }
+
+        // ----------------------------------------------------------------
+        // Theme Management
+        // ----------------------------------------------------------------
+
+        private void ApplyTheme()
+        {
+            _isDarkMode = ThemeManager.ResolveIsDark(_themeMode);
+
+            // Update Theme button text
+            _themeButton.Text = _themeMode switch
+            {
+                AppTheme.Auto  => "💻 自動",
+                AppTheme.Dark  => "🌙 ダーク",
+                AppTheme.Light => "☀️ ライト",
+                _ => "💻 自動"
+            };
+
+            // Window titlebar dark mode (DWM)
+            if (IsHandleCreated)
+            {
+                ThemeManager.SetWindowDarkMode(Handle, _isDarkMode);
+                ThemeManager.SetWindowTheme(_listView.Handle, _isDarkMode ? "DarkMode_Explorer" : "Explorer", null);
+                ThemeManager.SetWindowTheme(_gpuSelector.Handle, _isDarkMode ? "DarkMode_CFD" : "Explorer", null);
+            }
+
+            if (_isDarkMode)
+            {
+                BackColor               = ThemeManager.Dark.WindowBg;
+                _headerPanel.BackColor  = ThemeManager.Dark.WindowBg;
+                _listPanel.BackColor    = ThemeManager.Dark.WindowBg;
+
+                _gpuNameLabel.ForeColor = ThemeManager.Dark.TextPrimary;
+                _totalLabel.ForeColor   = ThemeManager.Dark.TextPrimary;
+                _updatedLabel.ForeColor = ThemeManager.Dark.TextSecondary;
+
+                _themeButton.BackColor  = ThemeManager.Dark.ControlBg;
+                _themeButton.ForeColor  = ThemeManager.Dark.TextPrimary;
+                _themeButton.FlatAppearance.BorderColor = ThemeManager.Dark.ControlBorder;
+
+                _gpuSelector.BackColor  = ThemeManager.Dark.ControlBg;
+                _gpuSelector.ForeColor  = ThemeManager.Dark.TextPrimary;
+
+                _progressBar.TrackColor = ThemeManager.Dark.ProgressTrack;
+                _progressBar.FillColor  = ThemeManager.Dark.ProgressFill;
+
+                _listView.BackColor     = ThemeManager.Dark.ListBg;
+                _listView.ForeColor     = ThemeManager.Dark.ListText;
+
+                _bannerPanel.BackColor  = ThemeManager.Dark.BannerBg;
+                _bannerLabel.ForeColor  = ThemeManager.Dark.BannerText;
+            }
+            else
+            {
+                BackColor               = ThemeManager.Light.WindowBg;
+                _headerPanel.BackColor  = ThemeManager.Light.HeaderBg;
+                _listPanel.BackColor    = ThemeManager.Light.WindowBg;
+
+                _gpuNameLabel.ForeColor = ThemeManager.Light.TextPrimary;
+                _totalLabel.ForeColor   = ThemeManager.Light.TextPrimary;
+                _updatedLabel.ForeColor = ThemeManager.Light.TextSecondary;
+
+                _themeButton.BackColor  = ThemeManager.Light.ControlBg;
+                _themeButton.ForeColor  = ThemeManager.Light.TextPrimary;
+                _themeButton.FlatAppearance.BorderColor = ThemeManager.Light.ControlBorder;
+
+                _gpuSelector.BackColor  = ThemeManager.Light.ControlBg;
+                _gpuSelector.ForeColor  = ThemeManager.Light.TextPrimary;
+
+                _progressBar.TrackColor = ThemeManager.Light.ProgressTrack;
+                _progressBar.FillColor  = ThemeManager.Light.ProgressFill;
+
+                _listView.BackColor     = ThemeManager.Light.ListBg;
+                _listView.ForeColor     = ThemeManager.Light.ListText;
+
+                _bannerPanel.BackColor  = ThemeManager.Light.BannerBg;
+                _bannerLabel.ForeColor  = ThemeManager.Light.BannerText;
+            }
+
+            _gpuSelector.Invalidate();
+            _listView.Invalidate();
+            RefreshData();
+        }
+
+        private void OnThemeButtonClick(object? sender, EventArgs e)
+        {
+            // Cycle: Auto -> Dark -> Light -> Auto
+            _themeMode = _themeMode switch
+            {
+                AppTheme.Auto  => AppTheme.Dark,
+                AppTheme.Dark  => AppTheme.Light,
+                AppTheme.Light => AppTheme.Auto,
+                _ => AppTheme.Auto
+            };
+
+            ApplyTheme();
+        }
+
+        private void OnGpuSelectorDrawItem(object? sender, DrawItemEventArgs e)
+        {
+            if (e.Index < 0 || e.Index >= _gpuSelector.Items.Count) return;
+
+            bool isSelected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
+            var itemText = _gpuSelector.Items[e.Index]?.ToString() ?? "";
+
+            Color bg = _isDarkMode
+                ? (isSelected ? Color.FromArgb(60, 60, 65) : ThemeManager.Dark.ControlBg)
+                : (isSelected ? SystemColors.Highlight : ThemeManager.Light.ControlBg);
+
+            Color fg = _isDarkMode
+                ? ThemeManager.Dark.TextPrimary
+                : (isSelected ? SystemColors.HighlightText : ThemeManager.Light.TextPrimary);
+
+            using var brushBg = new SolidBrush(bg);
+            using var brushFg = new SolidBrush(fg);
+
+            e.Graphics.FillRectangle(brushBg, e.Bounds);
+
+            var textRect = new Rectangle(e.Bounds.X + 4, e.Bounds.Y + 2, e.Bounds.Width - 8, e.Bounds.Height - 4);
+            var flags = TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis;
+            TextRenderer.DrawText(e.Graphics, itemText, e.Font ?? Font, textRect, fg, flags);
+
+            if ((e.State & DrawItemState.Focus) == DrawItemState.Focus && !isSelected)
+            {
+                e.DrawFocusRectangle();
+            }
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            base.WndProc(ref m);
+
+            // OS のダーク/ライトテーマ切り替え通知を検知
+            if (m.Msg == WM_SETTINGCHANGE || m.Msg == WM_THEMECHANGED)
+            {
+                if (_themeMode == AppTheme.Auto)
+                {
+                    ApplyTheme();
+                }
+            }
         }
 
         private void OnBannerClick(object? sender, EventArgs e)
@@ -166,6 +341,8 @@ namespace VramMonitor
 
         private void OnLoad(object? sender, EventArgs e)
         {
+            ApplyTheme();
+
             // ComboBox のイベントを一時停止してアダプター一覧を投入
             _gpuSelector.SelectedIndexChanged -= OnGpuSelected;
 
@@ -271,6 +448,8 @@ namespace VramMonitor
                 _listView.BeginUpdate();
                 _listView.Items.Clear();
 
+                Color systemColor = _isDarkMode ? ThemeManager.Dark.SystemRowText : ThemeManager.Light.SystemRowText;
+
                 foreach (var row in rows)
                 {
                     string pidText = row.IsSystem ? "-" : row.Pid.ToString();
@@ -287,7 +466,7 @@ namespace VramMonitor
                     });
 
                     if (row.IsSystem)
-                        item.ForeColor = System.Drawing.Color.Gray;
+                        item.ForeColor = systemColor;
 
                     _listView.Items.Add(item);
                 }
@@ -398,10 +577,10 @@ namespace VramMonitor
         {
             public ProcessRow(uint pid, ulong local, ulong nonLocal, bool isSystem = false)
             {
-                Pid          = pid;
-                LocalBytes   = local;
+                Pid           = pid;
+                LocalBytes    = local;
                 NonLocalBytes = nonLocal;
-                IsSystem     = isSystem;
+                IsSystem      = isSystem;
             }
 
             public uint  Pid           { get; }
@@ -425,7 +604,7 @@ namespace VramMonitor
 
             try
             {
-                var category = new System.Diagnostics.PerformanceCounterCategory("GPU Process Memory");
+                var category = new PerformanceCounterCategory("GPU Process Memory");
                 string[] instances = category.GetInstanceNames();
 
                 foreach (var inst in instances)
@@ -444,7 +623,7 @@ namespace VramMonitor
                     // 専用 VRAM (Local Usage または Dedicated Usage)
                     try
                     {
-                        using var lc = new System.Diagnostics.PerformanceCounter(
+                        using var lc = new PerformanceCounter(
                             "GPU Process Memory", "Local Usage", inst, readOnly: true);
                         lv = lc.RawValue;
                     }
@@ -454,7 +633,7 @@ namespace VramMonitor
                     {
                         try
                         {
-                            using var dc = new System.Diagnostics.PerformanceCounter(
+                            using var dc = new PerformanceCounter(
                                 "GPU Process Memory", "Dedicated Usage", inst, readOnly: true);
                             lv = dc.RawValue;
                         }
@@ -464,7 +643,7 @@ namespace VramMonitor
                     // 共有 VRAM (Shared Usage または Non Local Usage)
                     try
                     {
-                        using var sc = new System.Diagnostics.PerformanceCounter(
+                        using var sc = new PerformanceCounter(
                             "GPU Process Memory", "Shared Usage", inst, readOnly: true);
                         nlv = sc.RawValue;
                     }
@@ -474,7 +653,7 @@ namespace VramMonitor
                     {
                         try
                         {
-                            using var nlc = new System.Diagnostics.PerformanceCounter(
+                            using var nlc = new PerformanceCounter(
                                 "GPU Process Memory", "Non Local Usage", inst, readOnly: true);
                             nlv = nlc.RawValue;
                         }
