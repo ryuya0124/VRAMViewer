@@ -252,12 +252,65 @@ namespace VramMonitor.Forms
 
         private void OnListViewDrawItem(object? sender, DrawListViewItemEventArgs e)
         {
-            // サブアイテム描画に委託
+            // View.Details では DrawSubItem で各列を描画
         }
 
         private void OnListViewDrawSubItem(object? sender, DrawListViewSubItemEventArgs e)
         {
-            e.DrawDefault = true;
+            if (e.Item == null) return;
+
+            bool isSelected = e.Item.Selected;
+            bool isSystem = e.Item.Tag is string key && key == "SYSTEM";
+
+            // 背景色の決定
+            Color bgColor;
+            if (isSelected)
+            {
+                bgColor = _isDarkMode
+                    ? Color.FromArgb(55, 55, 62)
+                    : Color.FromArgb(204, 232, 255);
+            }
+            else
+            {
+                bgColor = _isDarkMode ? ThemeManager.Dark.ListBg : ThemeManager.Light.ListBg;
+            }
+
+            using (var brush = new SolidBrush(bgColor))
+            {
+                e.Graphics.FillRectangle(brush, e.Bounds);
+            }
+
+            // 前景色（テキスト色）の決定
+            Color fgColor;
+            if (isSelected)
+            {
+                fgColor = _isDarkMode ? Color.White : Color.Black;
+            }
+            else
+            {
+                if (isSystem)
+                {
+                    fgColor = _isDarkMode ? ThemeManager.Dark.SystemRowText : ThemeManager.Light.SystemRowText;
+                }
+                else
+                {
+                    fgColor = _isDarkMode ? ThemeManager.Dark.ListText : ThemeManager.Light.ListText;
+                }
+            }
+
+            // アライメントの決定
+            var align = e.Header?.TextAlign ?? HorizontalAlignment.Left;
+            var flags = TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine;
+            flags |= align switch
+            {
+                HorizontalAlignment.Right  => TextFormatFlags.Right,
+                HorizontalAlignment.Center => TextFormatFlags.HorizontalCenter,
+                _                          => TextFormatFlags.Left
+            };
+
+            // パディング（左右にマージンを持たせて描画）
+            var textRect = new Rectangle(e.Bounds.X + 6, e.Bounds.Y, Math.Max(0, e.Bounds.Width - 12), e.Bounds.Height);
+            TextRenderer.DrawText(e.Graphics, e.SubItem?.Text ?? "", e.SubItem?.Font ?? e.Item.Font, textRect, fgColor, flags);
         }
 
         private void OnListViewResize(object? sender, EventArgs e)
