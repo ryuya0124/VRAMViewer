@@ -4,7 +4,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace VramMonitor
+namespace VramMonitor.Native
 {
     /// <summary>
     /// NVML の初期化状態および診断情報
@@ -108,7 +108,6 @@ namespace VramMonitor
         public struct NvmlProcessInfo
         {
             public uint Pid;
-            // padding 4 bytes (implicit)
             public ulong UsedGpuMemory;
             public uint GpuInstanceId;
             public uint ComputeInstanceId;
@@ -144,11 +143,6 @@ namespace VramMonitor
         public static extern NvmlReturn DeviceGetGraphicsRunningProcesses(
             IntPtr device, ref uint infoCount, [In, Out] NvmlProcessInfo[]? infos);
 
-        /// <summary>
-        /// Compute/Graphics いずれかの取得関数を、必要な配列サイズを自動判定しながら呼び出す共通処理。
-        /// 1回目は count=0, infos=null で呼び、ErrorInsufficientSize を受けて必要件数を取得し、
-        /// 2回目に実配列を渡して実データを取得する。
-        /// </summary>
         public delegate NvmlReturn RunningProcessesFunc(IntPtr device, ref uint infoCount, NvmlProcessInfo[]? infos);
 
         public static NvmlProcessInfo[] GetRunningProcesses(RunningProcessesFunc func, IntPtr device)
@@ -158,7 +152,6 @@ namespace VramMonitor
 
             if (result == NvmlReturn.Success)
             {
-                // プロセスが1つも無い場合はここに来る
                 return Array.Empty<NvmlProcessInfo>();
             }
 
@@ -167,7 +160,6 @@ namespace VramMonitor
                 throw new NvmlException("プロセス一覧の件数取得に失敗しました", result);
             }
 
-            // 取得までの間にプロセスが増える可能性があるため、少し余裕を持たせて再試行する
             for (int attempt = 0; attempt < 3; attempt++)
             {
                 uint capacity = count + 8;

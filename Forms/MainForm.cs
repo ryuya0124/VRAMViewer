@@ -1,37 +1,27 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
+using VramMonitor.Models;
+using VramMonitor.Native;
+using VramMonitor.Services;
+using VramMonitor.Theme;
 
-namespace VramMonitor
+namespace VramMonitor.Forms
 {
-    public sealed class MainForm : Form
+    public sealed partial class MainForm : Form
     {
         private const int RefreshIntervalMs = 1500;
         private const int WM_SETTINGCHANGE  = 0x001A;
         private const int WM_THEMECHANGED   = 0x031A;
 
-        // --- Controls ---
-        private readonly Panel             _headerPanel;
-        private readonly Panel             _listPanel;
-        private readonly Label             _gpuNameLabel;
-        private readonly Button            _themeButton;
-        private readonly ComboBox          _gpuSelector;
-        private readonly Label             _totalLabel;
-        private readonly ModernProgressBar _progressBar;
-        private readonly ListView          _listView;
-        private readonly Label             _updatedLabel;
+        // --- Services & State ---
         private readonly System.Windows.Forms.Timer _timer;
-        private readonly Panel             _bannerPanel;
-        private readonly Label             _bannerLabel;
+        private readonly GpuProcessCollector        _collector = new();
 
-        // --- Theme State ---
-        private AppTheme _themeMode = AppTheme.Auto;
-        private bool     _isDarkMode;
-
-        // --- State ---
+        private AppTheme          _themeMode = AppTheme.Auto;
+        private bool              _isDarkMode;
         private IntPtr            _device;
         private bool              _nvmlReady;
         private NvmlStatus        _nvmlStatus = NvmlStatus.NotAttempted;
@@ -39,141 +29,10 @@ namespace VramMonitor
         private List<AdapterInfo> _adapters = new();
         private AdapterInfo?      _selectedAdapter;
         private ulong             _lastNvmlUsed;
-        private readonly Dictionary<uint, string> _processNameCache = new();
 
         public MainForm()
         {
-            Text            = "VRAM Monitor";
-            Width           = 780;
-            Height          = 600;
-            MinimumSize     = new Size(580, 420);
-            StartPosition   = FormStartPosition.CenterScreen;
-            Font            = new Font("Segoe UI", 9F);
-
-            // ---- Banner panel (Warning / Status) ----
-            _bannerPanel = new Panel
-            {
-                Dock      = DockStyle.Top,
-                Height    = 30,
-                Padding   = new Padding(12, 6, 12, 6),
-                Visible   = false,
-                Cursor    = Cursors.Hand,
-            };
-            _bannerLabel = new Label
-            {
-                Dock      = DockStyle.Fill,
-                Font      = new Font("Segoe UI", 8.5F, FontStyle.Regular),
-                Text      = "",
-                Cursor    = Cursors.Hand,
-            };
-            _bannerPanel.Controls.Add(_bannerLabel);
-            _bannerPanel.Click += OnBannerClick;
-            _bannerLabel.Click += OnBannerClick;
-
-            // ---- Header panel ----
-            _headerPanel = new Panel
-            {
-                Dock    = DockStyle.Top,
-                Height  = 120,
-                Padding = new Padding(12, 10, 12, 6),
-            };
-
-            // Top row container inside header: GPU Name (left) & Theme Toggle Button (right)
-            var topRowPanel = new Panel
-            {
-                Dock   = DockStyle.Top,
-                Height = 28,
-            };
-
-            _themeButton = new Button
-            {
-                Dock      = DockStyle.Right,
-                Width     = 84,
-                Height    = 26,
-                FlatStyle = FlatStyle.Flat,
-                Font      = new Font("Segoe UI", 8F),
-                Cursor    = Cursors.Hand,
-            };
-            _themeButton.FlatAppearance.BorderSize = 1;
-            _themeButton.Click += OnThemeButtonClick;
-
-            _gpuNameLabel = new Label
-            {
-                Text     = "初期化中...",
-                Font     = new Font("Segoe UI", 11.5F, FontStyle.Bold),
-                Dock     = DockStyle.Fill,
-                AutoSize = false,
-            };
-
-            topRowPanel.Controls.Add(_gpuNameLabel);
-            topRowPanel.Controls.Add(_themeButton);
-
-            _gpuSelector = new ComboBox
-            {
-                Dock          = DockStyle.Top,
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                DrawMode      = DrawMode.OwnerDrawFixed,
-                ItemHeight    = 20,
-                Height        = 26,
-                FlatStyle     = FlatStyle.Flat,
-            };
-            _gpuSelector.DrawItem += OnGpuSelectorDrawItem;
-
-            _totalLabel = new Label
-            {
-                Text   = "",
-                Dock   = DockStyle.Top,
-                Height = 22,
-            };
-
-            _progressBar = new ModernProgressBar
-            {
-                Dock    = DockStyle.Top,
-                Height  = 18,
-                Minimum = 0,
-                Maximum = 100,
-            };
-
-            // Controls added bottom-to-top (DockStyle.Top stacks in reverse insertion order)
-            _headerPanel.Controls.Add(_progressBar);
-            _headerPanel.Controls.Add(_totalLabel);
-            _headerPanel.Controls.Add(_gpuSelector);
-            _headerPanel.Controls.Add(topRowPanel);
-
-            // ---- Process list ----
-            _listView = new ListView
-            {
-                Dock          = DockStyle.Fill,
-                View          = View.Details,
-                FullRowSelect = true,
-                GridLines     = true,
-                BorderStyle   = BorderStyle.None,
-            };
-            _listView.Columns.Add("PID",       70);
-            _listView.Columns.Add("プロセス名", 270);
-            _listView.Columns.Add("専用 VRAM",  145, HorizontalAlignment.Right);
-            _listView.Columns.Add("共有 VRAM",  145, HorizontalAlignment.Right);
-
-            _listPanel = new Panel
-            {
-                Dock    = DockStyle.Fill,
-                Padding = new Padding(12, 0, 12, 0)
-            };
-            _listPanel.Controls.Add(_listView);
-
-            _updatedLabel = new Label
-            {
-                Text    = "",
-                Dock    = DockStyle.Bottom,
-                Height  = 24,
-                Padding = new Padding(12, 0, 0, 6),
-                Font    = new Font("Segoe UI", 8F),
-            };
-
-            Controls.Add(_listPanel);
-            Controls.Add(_updatedLabel);
-            Controls.Add(_bannerPanel);
-            Controls.Add(_headerPanel);
+            InitializeComponent();
 
             _timer = new System.Windows.Forms.Timer { Interval = RefreshIntervalMs };
             _timer.Tick += (_, _) => RefreshData();
@@ -190,7 +49,6 @@ namespace VramMonitor
         {
             _isDarkMode = ThemeManager.ResolveIsDark(_themeMode);
 
-            // Update Theme button text
             _themeButton.Text = _themeMode switch
             {
                 AppTheme.Auto  => "💻 自動",
@@ -199,7 +57,6 @@ namespace VramMonitor
                 _ => "💻 自動"
             };
 
-            // Window titlebar dark mode (DWM)
             if (IsHandleCreated)
             {
                 ThemeManager.SetWindowDarkMode(Handle, _isDarkMode);
@@ -267,7 +124,6 @@ namespace VramMonitor
 
         private void OnThemeButtonClick(object? sender, EventArgs e)
         {
-            // Cycle: Auto -> Dark -> Light -> Auto
             _themeMode = _themeMode switch
             {
                 AppTheme.Auto  => AppTheme.Dark,
@@ -313,7 +169,6 @@ namespace VramMonitor
         {
             base.WndProc(ref m);
 
-            // OS のダーク/ライトテーマ切り替え通知を検知
             if (m.Msg == WM_SETTINGCHANGE || m.Msg == WM_THEMECHANGED)
             {
                 if (_themeMode == AppTheme.Auto)
@@ -343,7 +198,6 @@ namespace VramMonitor
         {
             ApplyTheme();
 
-            // ComboBox のイベントを一時停止してアダプター一覧を投入
             _gpuSelector.SelectedIndexChanged -= OnGpuSelected;
 
             _adapters = DxgiHelper.GetAllAdapters();
@@ -354,7 +208,6 @@ namespace VramMonitor
 
             _gpuSelector.SelectedIndexChanged += OnGpuSelected;
 
-            // NVML を初期化 (NVIDIA GPU 専用。自動探索リゾルバ付き)
             var (status, message, device) = Nvml.TryInitialize();
             _nvmlStatus = status;
             _nvmlStatusMessage = message;
@@ -370,12 +223,10 @@ namespace VramMonitor
                 return;
             }
 
-            // NVIDIA GPU を優先、なければ先頭を選択 (OnGpuSelected → RefreshData が走る)
             var preferred = _adapters.FirstOrDefault(a => a.IsNvidia) ?? _adapters[0];
             _gpuSelector.SelectedItem = preferred;
 
             UpdateBannerStatus();
-
             _timer.Start();
         }
 
@@ -408,7 +259,7 @@ namespace VramMonitor
         private void OnGpuSelected(object? sender, EventArgs e)
         {
             _selectedAdapter = _gpuSelector.SelectedItem as AdapterInfo;
-            _processNameCache.Clear();
+            _collector.ClearCache();
             UpdateBannerStatus();
             RefreshData();
         }
@@ -423,13 +274,9 @@ namespace VramMonitor
 
             try
             {
-                // --- プロセス一覧 ---
-                var rows = CollectProcesses(_selectedAdapter);
-
-                // --- ヘッダー (GPU 名 + メモリ使用量バー) ---
+                var rows = GpuProcessCollector.CollectProcesses(_selectedAdapter);
                 UpdateHeader(rows);
 
-                // システム/カーネル行: (NVML の合計使用量) - プロセス合計
                 ulong totalUsed = GetTotalUsedBytes();
                 if (totalUsed > 0)
                 {
@@ -439,12 +286,11 @@ namespace VramMonitor
                     if (totalUsed > processSum)
                     {
                         ulong sysVram = totalUsed - processSum;
-                        if (sysVram > 512 * 1024)                          // 512 KB 未満は誤差として無視
+                        if (sysVram > 512 * 1024)
                             rows.Add(new ProcessRow(0, sysVram, 0, isSystem: true));
                     }
                 }
 
-                // --- ListView 更新 ---
                 _listView.BeginUpdate();
                 _listView.Items.Clear();
 
@@ -455,14 +301,14 @@ namespace VramMonitor
                     string pidText = row.IsSystem ? "-" : row.Pid.ToString();
                     string name    = row.IsSystem
                         ? "システム/カーネル (ドライバ・その他)"
-                        : GetProcessName(row.Pid);
+                        : _collector.GetProcessName(row.Pid);
 
                     var item = new ListViewItem(new[]
                     {
                         pidText,
                         name,
-                        FormatVram(row.LocalBytes),
-                        FormatVram(row.NonLocalBytes),
+                        FormatHelper.FormatVram(row.LocalBytes),
+                        FormatHelper.FormatVram(row.NonLocalBytes),
                     });
 
                     if (row.IsSystem)
@@ -486,7 +332,6 @@ namespace VramMonitor
 
             _gpuNameLabel.Text = _selectedAdapter.Name;
 
-            // NVIDIA + NVML が利用可能な場合は NVML を優先 (より正確)
             if (_selectedAdapter.IsNvidia && _nvmlReady)
             {
                 var r = Nvml.DeviceGetMemoryInfo(_device, out var mem);
@@ -511,12 +356,11 @@ namespace VramMonitor
                     }
 
                     _totalLabel.Text = $"専用: {usedGb:0.00} GB / {totalGb:0.00} GB ({pct:0}%){shared}  ※ NVML";
-                    _progressBar.Value = Clamp100(pct);
+                    _progressBar.Value = FormatHelper.ClampPercent(pct);
                     return;
                 }
             }
 
-            // それ以外 (iGPU / AMD / Intel 等) → パフォーマンスカウンターのプロセス集計値を使用
             _lastNvmlUsed = 0;
 
             ulong processLocalSum = 0;
@@ -551,7 +395,7 @@ namespace VramMonitor
                 }
 
                 _totalLabel.Text = $"専用: {usedGb:0.00} GB / {totalGb:0.00} GB ({pct:0}%){shared}";
-                _progressBar.Value = Clamp100(pct);
+                _progressBar.Value = FormatHelper.ClampPercent(pct);
             }
             else
             {
@@ -560,184 +404,12 @@ namespace VramMonitor
             }
         }
 
-        /// <summary>システム/カーネル行計算用の合計使用量を返す。</summary>
         private ulong GetTotalUsedBytes()
         {
             if (_selectedAdapter != null && _selectedAdapter.IsNvidia && _nvmlReady && _lastNvmlUsed > 0)
                 return _lastNvmlUsed;
 
             return 0;
-        }
-
-        // ----------------------------------------------------------------
-        // Process collection
-        // ----------------------------------------------------------------
-
-        private readonly struct ProcessRow
-        {
-            public ProcessRow(uint pid, ulong local, ulong nonLocal, bool isSystem = false)
-            {
-                Pid           = pid;
-                LocalBytes    = local;
-                NonLocalBytes = nonLocal;
-                IsSystem      = isSystem;
-            }
-
-            public uint  Pid           { get; }
-            public ulong LocalBytes    { get; }
-            public ulong NonLocalBytes { get; }
-            public bool  IsSystem      { get; }
-            public ulong TotalBytes    => LocalBytes + NonLocalBytes;
-        }
-
-        /// <summary>
-        /// Windows パフォーマンスカウンター "GPU Process Memory" から
-        /// プロセスごとの専用 (Local) / 共有 (Shared / Non-Local) VRAM 使用量を取得する。
-        /// </summary>
-        private static List<ProcessRow> CollectProcesses(AdapterInfo? adapter)
-        {
-            var pidLocal    = new Dictionary<uint, ulong>();
-            var pidNonLocal = new Dictionary<uint, ulong>();
-
-            // adapter.LuidFilter は perf counter の実データとクロスマッチ済みの文字列
-            string? luidFilter = adapter?.LuidFilter;
-
-            try
-            {
-                var category = new PerformanceCounterCategory("GPU Process Memory");
-                string[] instances = category.GetInstanceNames();
-
-                foreach (var inst in instances)
-                {
-                    // LUID フィルタリング
-                    if (luidFilter != null &&
-                        !inst.Contains(luidFilter, StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    if (!TryParsePid(inst, out uint pid))
-                        continue;
-
-                    long lv = 0;
-                    long nlv = 0;
-
-                    // 専用 VRAM (Local Usage または Dedicated Usage)
-                    try
-                    {
-                        using var lc = new PerformanceCounter(
-                            "GPU Process Memory", "Local Usage", inst, readOnly: true);
-                        lv = lc.RawValue;
-                    }
-                    catch { /* インスタンスが消えた場合など */ }
-
-                    if (lv <= 0)
-                    {
-                        try
-                        {
-                            using var dc = new PerformanceCounter(
-                                "GPU Process Memory", "Dedicated Usage", inst, readOnly: true);
-                            lv = dc.RawValue;
-                        }
-                        catch { }
-                    }
-
-                    // 共有 VRAM (Shared Usage または Non Local Usage)
-                    try
-                    {
-                        using var sc = new PerformanceCounter(
-                            "GPU Process Memory", "Shared Usage", inst, readOnly: true);
-                        nlv = sc.RawValue;
-                    }
-                    catch { }
-
-                    if (nlv <= 0)
-                    {
-                        try
-                        {
-                            using var nlc = new PerformanceCounter(
-                                "GPU Process Memory", "Non Local Usage", inst, readOnly: true);
-                            nlv = nlc.RawValue;
-                        }
-                        catch { }
-                    }
-
-                    if (lv > 0)
-                    {
-                        ulong b = (ulong)lv;
-                        pidLocal[pid] = pidLocal.TryGetValue(pid, out var prev) ? prev + b : b;
-                    }
-                    if (nlv > 0)
-                    {
-                        ulong b = (ulong)nlv;
-                        pidNonLocal[pid] = pidNonLocal.TryGetValue(pid, out var prev) ? prev + b : b;
-                    }
-                }
-            }
-            catch { /* カテゴリが存在しない環境 */ }
-
-            // 両辞書のキーを統合してリスト化
-            var allPids = new HashSet<uint>(pidLocal.Keys);
-            allPids.UnionWith(pidNonLocal.Keys);
-
-            var rows = new List<ProcessRow>(allPids.Count);
-            foreach (var pid in allPids)
-            {
-                pidLocal.TryGetValue(pid,    out var l);
-                pidNonLocal.TryGetValue(pid, out var nl);
-                rows.Add(new ProcessRow(pid, l, nl));
-            }
-
-            // 専用 + 共有の合計でソート
-            rows.Sort((a, b) => b.TotalBytes.CompareTo(a.TotalBytes));
-            return rows;
-        }
-
-        /// <summary>
-        /// GPU Process Memory インスタンス名 "pid_PPPP_luid_..." から PID を取り出す。
-        /// </summary>
-        private static bool TryParsePid(string instance, out uint pid)
-        {
-            pid = 0;
-            if (!instance.StartsWith("pid_", StringComparison.OrdinalIgnoreCase))
-                return false;
-            var rest = instance.AsSpan(4);
-            int sep  = rest.IndexOf('_');
-            var span = sep >= 0 ? rest.Slice(0, sep) : rest;
-            return uint.TryParse(span, out pid);
-        }
-
-        // ----------------------------------------------------------------
-        // Utilities
-        // ----------------------------------------------------------------
-
-        private static string FormatVram(ulong bytes)
-        {
-            if (bytes == 0) return "-";
-            const double gb = 1024.0 * 1024.0 * 1024.0;
-            const double mb = 1024.0 * 1024.0;
-            return bytes >= gb
-                ? $"{bytes / gb:0.00} GB"
-                : $"{bytes / mb:0.0} MB";
-        }
-
-        private static int Clamp100(double value)
-            => Math.Max(0, Math.Min(100, (int)Math.Round(value)));
-
-        private string GetProcessName(uint pid)
-        {
-            if (_processNameCache.TryGetValue(pid, out var cached))
-                return cached;
-
-            string name;
-            try
-            {
-                using var p = Process.GetProcessById((int)pid);
-                name = p.ProcessName;
-            }
-            catch (ArgumentException)         { name = $"(PID {pid})"; }
-            catch (InvalidOperationException) { name = $"(PID {pid})"; }
-
-            _processNameCache[pid] = name;
-            return name;
         }
 
         // ----------------------------------------------------------------

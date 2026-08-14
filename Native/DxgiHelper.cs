@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
-namespace VramMonitor
+namespace VramMonitor.Native
 {
     /// <summary>GPU アダプター情報を保持するクラス。</summary>
     public sealed class AdapterInfo
@@ -67,25 +67,11 @@ namespace VramMonitor
 
         private const uint NvidiaVendorId = 0x10DE;
 
-        // DXGI_ADAPTER_DESC layout (x64):
-        //   0   : WCHAR Description[128] = 256 bytes
-        //   256 : UINT  VendorId
-        //   260 : UINT  DeviceId
-        //   264 : UINT  SubSysId
-        //   268 : UINT  Revision
-        //   272 : SIZE_T DedicatedVideoMemory  (8 bytes on x64)
-        //   280 : SIZE_T DedicatedSystemMemory
-        //   288 : SIZE_T SharedSystemMemory
-        //   296 : DWORD  AdapterLuid.LowPart
-        //   300 : LONG   AdapterLuid.HighPart
-        //   total: 304 bytes
         private const int DescSize       = 304;
         private const int VendorIdOffset = 256;
         private const int LuidLowOffset  = 296;
         private const int LuidHighOffset = 300;
-
-        // DXGI_QUERY_VIDEO_MEMORY_INFO: Budget(8) + CurrentUsage(8) + ... = 32 bytes
-        private const int QvmiSize = 32;
+        private const int QvmiSize       = 32;
 
         // ----------------------------------------------------------------
         // Public API
@@ -98,21 +84,15 @@ namespace VramMonitor
         /// </summary>
         public static List<AdapterInfo> GetAllAdapters()
         {
-            // Step 1: DXGI から生のアダプター情報を取得
             var rawList = GetRawDxgiAdapters();
-
-            // Step 2: パフォーマンスカウンターから実際の LUID 文字列セットを取得
             var perfLuids = GetUniquePerfCounterLuidParts();
 
-            // Step 3: DXGI LUID 値と perf counter LUID 文字列をクロスマッチング
             var result = new List<AdapterInfo>();
             foreach (var raw in rawList)
             {
-                // DXGI LUID から両順序のフィルター文字列を生成
-                string hl = $"luid_0x{raw.LuidHigh:X8}_0x{raw.LuidLow:X8}";         // High_Low
-                string lh = $"luid_0x{raw.LuidLow:X8}_0x{(uint)raw.LuidHigh:X8}";   // Low_High
+                string hl = $"luid_0x{raw.LuidHigh:X8}_0x{raw.LuidLow:X8}";
+                string lh = $"luid_0x{raw.LuidLow:X8}_0x{(uint)raw.LuidHigh:X8}";
 
-                // perf counter の実際の文字列と照合
                 string? verified = null;
                 foreach (var pl in perfLuids)
                 {
@@ -163,7 +143,6 @@ namespace VramMonitor
                             int  rHigh = Marshal.ReadInt32(descBuf, LuidHighOffset);
                             if (rLow != luidLow || rHigh != luidHigh) return;
 
-                            // QI for IDXGIAdapter3
                             var qiIid = IID_IDXGIAdapter3;
                             var qiFn  = GetVtblFn<QueryInterfaceDel>(Marshal.ReadIntPtr(adapter), 0);
                             if (qiFn(adapter, ref qiIid, out IntPtr adapter3) != 0 || adapter3 == IntPtr.Zero)
@@ -233,7 +212,6 @@ namespace VramMonitor
 
                             uint vendorId = (uint)Marshal.ReadInt32(descBuf, VendorIdOffset);
 
-                            // Microsoft Basic Render Driver (ソフトウェアレンダラー) をスキップ
                             if (vendorId == 0x1414) return;
 
                             uint luidLow  = (uint)Marshal.ReadInt32(descBuf, LuidLowOffset);
@@ -263,12 +241,6 @@ namespace VramMonitor
             return list;
         }
 
-        /// <summary>
-        /// "GPU Process Memory" パフォーマンスカウンターのインスタンス名から
-        /// 一意の LUID 部分文字列を抽出する。
-        /// 例: "pid_1234_luid_0x00000000_0x0001A123_phys_0"
-        ///  → "luid_0x00000000_0x0001A123"
-        /// </summary>
         private static HashSet<string> GetUniquePerfCounterLuidParts()
         {
             var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -278,7 +250,7 @@ namespace VramMonitor
                 foreach (var inst in cat.GetInstanceNames())
                 {
                     string? part = ExtractLuidPart(inst);
-                    if (part != null && part.Length > 5) // "luid_" 以上あること
+                    if (part != null && part.Length > 5)
                         set.Add(part);
                 }
             }
@@ -286,10 +258,6 @@ namespace VramMonitor
             return set;
         }
 
-        /// <summary>
-        /// インスタンス名から "luid_0x..." 部分を切り出す。
-        /// "_phys_" の直前まで。
-        /// </summary>
         private static string? ExtractLuidPart(string instance)
         {
             int luidStart = instance.IndexOf("luid_", StringComparison.OrdinalIgnoreCase);

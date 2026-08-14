@@ -3,7 +3,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
-namespace VramMonitor
+namespace VramMonitor.Controls
 {
     public sealed class ModernProgressBar : Control
     {
@@ -99,7 +99,6 @@ namespace VramMonitor
             var rect = ClientRectangle;
             if (rect.Width <= 0 || rect.Height <= 0) return;
 
-            // 角丸の半径
             float cornerRadius = 4f;
             using (var trackPath = GetRoundedRectanglePath(new RectangleF(rect.X, rect.Y, rect.Width - 1, rect.Height - 1), cornerRadius))
             using (var trackBrush = new SolidBrush(_trackColor))
@@ -107,9 +106,9 @@ namespace VramMonitor
                 g.FillPath(trackBrush, trackPath);
             }
 
-            if (_value > 0 && _maximum > 0)
+            if (_value > _minimum && _maximum > _minimum)
             {
-                float percent = (float)_value / _maximum;
+                float percent = (float)(_value - _minimum) / (_maximum - _minimum);
                 float fillWidth = Math.Max(cornerRadius * 2, (rect.Width - 1) * percent);
                 if (fillWidth > rect.Width - 1) fillWidth = rect.Width - 1;
 
@@ -133,15 +132,11 @@ namespace VramMonitor
             }
 
             var arc = new RectangleF(rect.X, rect.Y, diameter, diameter);
-            // Top-left
             path.AddArc(arc, 180, 90);
-            // Top-right
             arc.X = rect.Right - diameter;
             path.AddArc(arc, 270, 90);
-            // Bottom-right
             arc.Y = rect.Bottom - diameter;
             path.AddArc(arc, 0, 90);
-            // Bottom-left
             arc.X = rect.Left;
             path.AddArc(arc, 90, 90);
             path.CloseFigure();
