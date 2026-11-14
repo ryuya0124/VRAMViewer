@@ -76,21 +76,21 @@ namespace VramMonitor.Forms
             // File Menu
             _menuFile = new ToolStripMenuItem();
             _menuRefreshNow = new ToolStripMenuItem { ShortcutKeys = Keys.F5 };
-            _menuRefreshNow.Click += (_, _) => RefreshData();
+            _menuRefreshNow.Click += OnRefreshNowClick;
             _menuSeparatorFile = new ToolStripSeparator();
             _menuExit = new ToolStripMenuItem { ShortcutKeys = Keys.Alt | Keys.F4 };
-            _menuExit.Click += (_, _) => Close();
+            _menuExit.Click += OnExitClick;
             _menuFile.DropDownItems.AddRange(new ToolStripItem[] { _menuRefreshNow, _menuSeparatorFile, _menuExit });
 
             // View Menu
             _menuView = new ToolStripMenuItem();
             _menuTheme = new ToolStripMenuItem();
             _menuThemeAuto = new ToolStripMenuItem();
-            _menuThemeAuto.Click += (_, _) => SetTheme(Theme.AppTheme.Auto);
+            _menuThemeAuto.Click += OnThemeAutoClick;
             _menuThemeDark = new ToolStripMenuItem();
-            _menuThemeDark.Click += (_, _) => SetTheme(Theme.AppTheme.Dark);
+            _menuThemeDark.Click += OnThemeDarkClick;
             _menuThemeLight = new ToolStripMenuItem();
-            _menuThemeLight.Click += (_, _) => SetTheme(Theme.AppTheme.Light);
+            _menuThemeLight.Click += OnThemeLightClick;
             _menuTheme.DropDownItems.AddRange(new ToolStripItem[] { _menuThemeAuto, _menuThemeDark, _menuThemeLight });
 
             _menuAlwaysOnTop = new ToolStripMenuItem { CheckOnClick = true };
@@ -102,17 +102,17 @@ namespace VramMonitor.Forms
             _menuSettings = new ToolStripMenuItem();
             _menuRefreshInterval = new ToolStripMenuItem();
             _menuInterval500 = new ToolStripMenuItem();
-            _menuInterval500.Click += (_, _) => SetRefreshInterval(500);
+            _menuInterval500.Click += OnInterval500Click;
             _menuInterval1000 = new ToolStripMenuItem();
-            _menuInterval1000.Click += (_, _) => SetRefreshInterval(1000);
+            _menuInterval1000.Click += OnInterval1000Click;
             _menuInterval1500 = new ToolStripMenuItem();
-            _menuInterval1500.Click += (_, _) => SetRefreshInterval(1500);
+            _menuInterval1500.Click += OnInterval1500Click;
             _menuInterval2000 = new ToolStripMenuItem();
-            _menuInterval2000.Click += (_, _) => SetRefreshInterval(2000);
+            _menuInterval2000.Click += OnInterval2000Click;
             _menuInterval3000 = new ToolStripMenuItem();
-            _menuInterval3000.Click += (_, _) => SetRefreshInterval(3000);
+            _menuInterval3000.Click += OnInterval3000Click;
             _menuInterval5000 = new ToolStripMenuItem();
-            _menuInterval5000.Click += (_, _) => SetRefreshInterval(5000);
+            _menuInterval5000.Click += OnInterval5000Click;
             _menuRefreshInterval.DropDownItems.AddRange(new ToolStripItem[] {
                 _menuInterval500, _menuInterval1000, _menuInterval1500,
                 _menuInterval2000, _menuInterval3000, _menuInterval5000

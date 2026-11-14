@@ -18,6 +18,18 @@ namespace VramMonitor.Forms
         private const int WM_SETTINGCHANGE         = 0x001A;
         private const int WM_THEMECHANGED          = 0x031A;
 
+        private void OnRefreshNowClick(object? sender, EventArgs e) => RefreshData();
+        private void OnExitClick(object? sender, EventArgs e) => Close();
+        private void OnThemeAutoClick(object? sender, EventArgs e) => SetTheme(AppTheme.Auto);
+        private void OnThemeDarkClick(object? sender, EventArgs e) => SetTheme(AppTheme.Dark);
+        private void OnThemeLightClick(object? sender, EventArgs e) => SetTheme(AppTheme.Light);
+        private void OnInterval500Click(object? sender, EventArgs e) => SetRefreshInterval(500);
+        private void OnInterval1000Click(object? sender, EventArgs e) => SetRefreshInterval(1000);
+        private void OnInterval1500Click(object? sender, EventArgs e) => SetRefreshInterval(1500);
+        private void OnInterval2000Click(object? sender, EventArgs e) => SetRefreshInterval(2000);
+        private void OnInterval3000Click(object? sender, EventArgs e) => SetRefreshInterval(3000);
+        private void OnInterval5000Click(object? sender, EventArgs e) => SetRefreshInterval(5000);
+
         // --- Services & State ---
         private readonly System.Windows.Forms.Timer _timer;
         private readonly GpuProcessCollector        _collector = new();

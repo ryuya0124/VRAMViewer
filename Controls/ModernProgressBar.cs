@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
@@ -26,6 +27,7 @@ namespace VramMonitor.Controls
             Height = 18;
         }
 
+        [DefaultValue(0)]
         public int Minimum
         {
             get => _minimum;
@@ -37,6 +39,7 @@ namespace VramMonitor.Controls
             }
         }
 
+        [DefaultValue(0)]
         public int Value
         {
             get => _value;
@@ -51,6 +54,7 @@ namespace VramMonitor.Controls
             }
         }
 
+        [DefaultValue(100)]
         public int Maximum
         {
             get => _maximum;
@@ -65,6 +69,7 @@ namespace VramMonitor.Controls
             }
         }
 
+        [DefaultValue(typeof(Color), "50, 50, 50")]
         public Color TrackColor
         {
             get => _trackColor;
@@ -78,6 +83,7 @@ namespace VramMonitor.Controls
             }
         }
 
+        [DefaultValue(typeof(Color), "118, 185, 0")]
         public Color FillColor
         {
             get => _fillColor;
