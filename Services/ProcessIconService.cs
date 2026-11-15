@@ -53,16 +53,15 @@ namespace VramMonitor.Services
         private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
         private readonly Dictionary<string, Image> _pathIconCache = new(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<uint, Image>   _pidIconCache  = new();
-        private readonly Dictionary<uint, string>  _pidPathCache  = new();
 
         private Image? _defaultExeIcon;
         private Image? _systemIcon;
 
         public void ClearCache()
         {
-            _pidIconCache.Clear();
-            _pidPathCache.Clear();
+            foreach (var img in _pathIconCache.Values.Distinct())
+                if (!ReferenceEquals(img, _defaultExeIcon)) img.Dispose();
+            _pathIconCache.Clear();
         }
 
         public Image GetDefaultExeIcon()
@@ -130,11 +129,6 @@ namespace VramMonitor.Services
                 return GetSystemIcon();
             }
 
-            if (_pidIconCache.TryGetValue(pid, out var cachedIcon))
-            {
-                return cachedIcon;
-            }
-
             string? exePath = GetProcessExecutablePath(pid);
             Image icon;
 
@@ -147,18 +141,12 @@ namespace VramMonitor.Services
                 icon = GetDefaultExeIcon();
             }
 
-            _pidIconCache[pid] = icon;
             return icon;
         }
 
         public string? GetProcessExecutablePath(uint pid)
         {
             if (pid == 0 || pid == 4) return null;
-
-            if (_pidPathCache.TryGetValue(pid, out var cachedPath))
-            {
-                return cachedPath;
-            }
 
             string? path = null;
             IntPtr handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, (int)pid);
@@ -189,11 +177,6 @@ namespace VramMonitor.Services
                 catch { }
             }
 
-            if (!string.IsNullOrEmpty(path))
-            {
-                _pidPathCache[pid] = path;
-            }
-
             return path;
         }
 
@@ -203,6 +186,9 @@ namespace VramMonitor.Services
             {
                 return img;
             }
+
+            // Paths change as applications update. Bound the GDI image cache.
+            if (_pathIconCache.Count >= 256) ClearCache();
 
             Image? result = null;
             try
@@ -245,13 +231,7 @@ namespace VramMonitor.Services
 
         public void Dispose()
         {
-            foreach (var img in _pathIconCache.Values)
-            {
-                img.Dispose();
-            }
-            _pathIconCache.Clear();
-            _pidIconCache.Clear();
-            _pidPathCache.Clear();
+            ClearCache();
 
             _defaultExeIcon?.Dispose();
             _defaultExeIcon = null;

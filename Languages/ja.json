@@ -2,6 +2,15 @@
   "CultureCode": "ja",
   "DisplayName": "🇯🇵 日本語 (Japanese)",
   "Strings": {
+    "ProcessChanged": "プロセスが終了または入れ替わったため、操作を中止しました",
+    "SelectGpu": "表示するGPU",
+    "MonitorSubtitle": "GPUごとのメモリ使用量と、プロセス別の内訳を確認します",
+    "AboutWinUI": "VRAMViewer — WinUI 3\\n\\nGPUごとの専用・共有メモリとプロセス別の使用量を表示します。NVIDIA NVMLとWindows GPUカウンターを使用します。\\n\\nhttps://github.com/ryuya0124/VRAMViewer",
+    "Close": "閉じる",
+    "ExperimentalGpu": "実験的対応",
+    "Cancel": "キャンセル",
+    "SourceWindows": "総使用量: Windows GPUカウンター · プロセス間で共有されたメモリは合計と一致しない場合があります",
+    "SourceNvml": "総専用メモリ: NVIDIA NVML · プロセスと共有メモリ: Windows GPUカウンター",
     "AppTitle": "VRAMViewer",
     "Initializing": "初期化中...",
     "GpuNotFound": "GPU が見つかりません",
@@ -46,8 +55,9 @@
     "ColDedicatedVram": "専用 VRAM",
     "ColSharedVram": "共有 VRAM",
 
-    "SystemKernelProcess": "システム/カーネル (ドライバ・その他)",
+    "SystemKernelProcess": "未割り当てのGPUメモリ",
 
+    "ProcessSumEstimate": "プロセス合計（概算）",
     "HeaderDedicated": "専用",
     "HeaderShared": "共有",
 

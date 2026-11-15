@@ -36,6 +36,8 @@ bld/
 [Bb]in/
 [Oo]bj/
 publish/
+publish_light/
+artifacts/
 dist/
 
 # OS generated files

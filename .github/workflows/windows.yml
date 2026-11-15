@@ -1,0 +1,16 @@
+name: Windows
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: 11.0.x
+      - run: dotnet restore VramMonitor.csproj --locked-mode -p:Platform=x64 -r win-x64
+      - run: dotnet run --project Tests/CoreRegression -c Release
+      - run: dotnet publish VramMonitor.csproj -c Release -p:Platform=x64 -r win-x64 --self-contained true -o artifacts/app
+      - run: dotnet list VramMonitor.csproj package --vulnerable --include-transitive

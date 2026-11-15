@@ -22,10 +22,8 @@ namespace VramMonitor.Native
     /// <summary>
     /// NVIDIA Management Library (NVML) の薄いP/Invokeラッパー。
     ///
-    /// タスクマネージャーの「専用GPUメモリ」表示は、Windowsの
-    /// GPU Process Memory パフォーマンスカウンター経由の集計値ではなく、
-    /// このNVMLをベースにしたドライバの内部情報を参照している。
-    /// そのため、ここで取得する数値はTask Managerと一致する（同一情報源）。
+    /// NVML reports driver-level totals. Task Manager uses Windows VidMm;
+    /// differences between those sources are expected.
     ///
     /// 参考: nvml.dll は NVIDIA ドライバのインストール時に
     ///   C:\Program Files\NVIDIA Corporation\NVSMI\nvml.dll
@@ -54,8 +52,9 @@ namespace VramMonitor.Native
             if (libraryName.Equals(DllName, StringComparison.OrdinalIgnoreCase) ||
                 libraryName.Equals("nvml", StringComparison.OrdinalIgnoreCase))
             {
-                // 1. 標準検索 (System32 / PATH)
-                if (NativeLibrary.TryLoad("nvml.dll", out IntPtr handle))
+                // Use only driver installation locations; never CWD or PATH.
+                string sys32Path = Path.Combine(Environment.SystemDirectory, "nvml.dll");
+                if (NativeLibrary.TryLoad(sys32Path, out IntPtr handle))
                     return handle;
 
                 // 2. NVSMI フォルダ (標準インストール先)
@@ -65,12 +64,8 @@ namespace VramMonitor.Native
                 if (File.Exists(nvsmiPath) && NativeLibrary.TryLoad(nvsmiPath, out handle))
                     return handle;
 
-                // 3. System32 明示パス
-                string sys32Path = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.System),
-                    "nvml.dll");
-                if (File.Exists(sys32Path) && NativeLibrary.TryLoad(sys32Path, out handle))
-                    return handle;
+                // Returning zero would re-enable the unsafe default DLL search.
+                throw new DllNotFoundException("nvml.dll was not found in the NVIDIA driver installation directories.");
             }
             return IntPtr.Zero;
         }
@@ -99,8 +94,7 @@ namespace VramMonitor.Native
             public ulong Used;
         }
 
-        // nvmlProcessInfo_v1_t: { uint pid; unsigned long long usedGpuMemory; }
-        // x64では pid(4B)+padding(4B)+usedGpuMemory(8B) = 16B。
+        // nvmlProcessInfo_t for the v3 APIs is 24 bytes on x64, including MIG IDs.
         // Pack=8 を明示してネイティブ側と確実に一致させる。
         // v3 API では usedGpuMemory が取得不可の場合 ULLONG_MAX を返すため
         // 呼び出し側でそのセンチネル値を 0 に置き換える。
@@ -246,6 +240,7 @@ namespace VramMonitor.Native
                 if (DeviceGetCount(out uint count) == NvmlReturn.Success && count > 0)
                 {
                     var sb = new StringBuilder(64);
+                    IntPtr match = IntPtr.Zero;
                     for (uint i = 0; i < count; i++)
                     {
                         if (DeviceGetHandleByIndex(i, out IntPtr dev) == NvmlReturn.Success && dev != IntPtr.Zero)
@@ -258,15 +253,15 @@ namespace VramMonitor.Native
                                     (adapter.Name.Contains(devName, StringComparison.OrdinalIgnoreCase) ||
                                      devName.Contains(adapter.Name, StringComparison.OrdinalIgnoreCase)))
                                 {
-                                    return dev;
+                                    // Identical model names cannot identify a physical GPU.
+                                    if (match != IntPtr.Zero) return IntPtr.Zero;
+                                    match = dev;
                                 }
                             }
                         }
                     }
 
-                    // 完全一致しない場合は最初のデバイスをフォールバック
-                    if (DeviceGetHandleByIndex(0, out IntPtr firstDev) == NvmlReturn.Success)
-                        return firstDev;
+                    return match;
                 }
             }
             catch { }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -11,7 +12,6 @@ namespace VramMonitor.Services
 {
     public sealed class GpuProcessCollector
     {
-        private readonly Dictionary<uint, string> _processNameCache = new();
         public ProcessIconService IconService { get; } = new();
 
         [DllImport("kernel32.dll", SetLastError = true)]
@@ -27,7 +27,6 @@ namespace VramMonitor.Services
 
         public void ClearCache()
         {
-            _processNameCache.Clear();
             IconService.ClearCache();
         }
 
@@ -41,9 +40,6 @@ namespace VramMonitor.Services
             if (pid == 0) return "System Idle";
             if (pid == 4) return "System (NT Kernel)";
 
-            if (_processNameCache.TryGetValue(pid, out var cached))
-                return cached;
-
             string name;
             try
             {
@@ -55,7 +51,6 @@ namespace VramMonitor.Services
                 name = GetProcessNameLowLevel(pid);
             }
 
-            _processNameCache[pid] = name;
             return name;
         }
 
@@ -86,6 +81,11 @@ namespace VramMonitor.Services
         /// プロセスごとの専用 (Local) / 共有 (Shared / Non-Local) VRAM 使用量を取得する。
         /// </summary>
         public static List<ProcessRow> CollectProcesses(AdapterInfo? adapter)
+            => CollectSnapshot(adapter).Processes;
+
+        public sealed record MemorySnapshot(List<ProcessRow> Processes, ulong? DedicatedBytes, ulong? SharedBytes);
+
+        public static MemorySnapshot CollectSnapshot(AdapterInfo? adapter)
         {
             var pidLocal    = new Dictionary<uint, ulong>();
             var pidNonLocal = new Dictionary<uint, ulong>();
@@ -96,7 +96,14 @@ namespace VramMonitor.Services
             try
             {
                 var category = new PerformanceCounterCategory("GPU Process Memory");
-                string[] instances = category.GetInstanceNames();
+                // One category read gives a consistent snapshot and avoids opening
+                // several native counter handles for every process on every tick.
+                var counters = category.ReadCategory();
+                var local = GetCounter(counters, "Local Usage") ?? GetCounter(counters, "Dedicated Usage");
+                var shared = GetCounter(counters, "Shared Usage") ?? GetCounter(counters, "Non Local Usage");
+                var instances = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (local != null) foreach (string name in local.Keys) instances.Add(name);
+                if (shared != null) foreach (string name in shared.Keys) instances.Add(name);
 
                 foreach (var inst in instances)
                 {
@@ -108,48 +115,8 @@ namespace VramMonitor.Services
                     if (!TryParsePid(inst, out uint pid))
                         continue;
 
-                    long lv = 0;
-                    long nlv = 0;
-
-                    // 専用 VRAM (Local Usage または Dedicated Usage)
-                    try
-                    {
-                        using var lc = new PerformanceCounter(
-                            "GPU Process Memory", "Local Usage", inst, readOnly: true);
-                        lv = lc.RawValue;
-                    }
-                    catch { /* インスタンスが消えた場合など */ }
-
-                    if (lv <= 0)
-                    {
-                        try
-                        {
-                            using var dc = new PerformanceCounter(
-                                "GPU Process Memory", "Dedicated Usage", inst, readOnly: true);
-                            lv = dc.RawValue;
-                        }
-                        catch { }
-                    }
-
-                    // 共有 VRAM (Shared Usage または Non Local Usage)
-                    try
-                    {
-                        using var sc = new PerformanceCounter(
-                            "GPU Process Memory", "Shared Usage", inst, readOnly: true);
-                        nlv = sc.RawValue;
-                    }
-                    catch { }
-
-                    if (nlv <= 0)
-                    {
-                        try
-                        {
-                            using var nlc = new PerformanceCounter(
-                                "GPU Process Memory", "Non Local Usage", inst, readOnly: true);
-                            nlv = nlc.RawValue;
-                        }
-                        catch { }
-                    }
+                    long lv = local != null && local.Contains(inst) ? local[inst].RawValue : 0;
+                    long nlv = shared != null && shared.Contains(inst) ? shared[inst].RawValue : 0;
 
                     if (lv > 0)
                     {
@@ -179,7 +146,32 @@ namespace VramMonitor.Services
 
             // 専用 + 共有の合計でソート
             rows.Sort((a, b) => b.TotalBytes.CompareTo(a.TotalBytes));
-            return rows;
+            ulong? dedicatedBytes = null, sharedBytes = null;
+            try
+            {
+                var counters = new PerformanceCounterCategory("GPU Adapter Memory").ReadCategory();
+                dedicatedBytes = SumAdapterCounter(GetCounter(counters, "Dedicated Usage"), luidFilter);
+                sharedBytes = SumAdapterCounter(GetCounter(counters, "Shared Usage"), luidFilter);
+            }
+            catch { }
+            return new MemorySnapshot(rows, dedicatedBytes, sharedBytes);
+        }
+
+        private static InstanceDataCollection? GetCounter(InstanceDataCollectionCollection counters, string name)
+            => counters.Contains(name) ? counters[name] : null;
+
+        private static ulong? SumAdapterCounter(InstanceDataCollection? counter, string? luidFilter)
+        {
+            if (counter == null) return null;
+            ulong total = 0;
+            bool found = false;
+            foreach (InstanceData instance in counter.Values)
+            {
+                if (luidFilter != null && !instance.InstanceName.Contains(luidFilter, StringComparison.OrdinalIgnoreCase)) continue;
+                found = true;
+                if (instance.RawValue > 0) total += (ulong)instance.RawValue;
+            }
+            return found ? total : null;
         }
 
         /// <summary>
